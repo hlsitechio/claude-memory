@@ -1,0 +1,9 @@
+# Session data (personal, don't commit)
+.claude-memory/
+
+# Claude Code config (may contain secrets)
+.claude/settings.local.json
+
+# OS files
+.DS_Store
+Thumbs.db
