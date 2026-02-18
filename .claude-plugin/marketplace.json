@@ -1,0 +1,30 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "hlsitechio",
+  "description": "Plugins by hlsitechio — AI-powered development tools",
+  "owner": {
+    "name": "hlsitechio",
+    "url": "https://github.com/hlsitechio"
+  },
+  "metadata": {
+    "description": "Open-source plugins for Claude Code by hlsitechio",
+    "homepage": "https://github.com/hlsitechio/claude-memory"
+  },
+  "plugins": [
+    {
+      "name": "claude-memory",
+      "version": "1.0.0",
+      "source": "./plugin",
+      "description": "Persistent M/C/I memory for Claude Code — survives compacts and session restarts",
+      "category": "productivity",
+      "tags": [
+        "memory",
+        "persistence",
+        "hooks",
+        "sessions",
+        "context-window",
+        "mci"
+      ]
+    }
+  ]
+}

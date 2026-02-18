@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="#-quick-start"><img src="https://img.shields.io/badge/setup-one_command-brightgreen?style=for-the-badge" alt="One Command Setup"></a>
+  <a href="#-quick-start"><img src="https://img.shields.io/badge/plugin-native_install-blueviolet?style=for-the-badge" alt="Plugin Install"></a>
   <a href="#-how-it-works"><img src="https://img.shields.io/badge/hooks-4_automated-blue?style=for-the-badge" alt="4 Hooks"></a>
   <a href="#-how-the-safety-net-works"><img src="https://img.shields.io/badge/fallback-3_tier-orange?style=for-the-badge" alt="3-Tier Fallback"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple?style=for-the-badge" alt="MIT License"></a>
@@ -80,6 +81,30 @@ Every piece of knowledge is stored as an **atomic triplet**:
 ---
 
 ## 🚀 Quick Start
+
+### 🔌 Option A: Plugin Install (Recommended)
+
+The fastest way — native Claude Code plugin with automatic hook registration:
+
+```bash
+# Add the marketplace (one-time)
+/plugin marketplace add hlsitechio/claude-memory
+
+# Install the plugin
+/plugin install claude-memory@hlsitechio
+```
+
+That's it! Restart Claude Code and memory is active. You also get 3 slash commands:
+
+| Command | What it does |
+|---------|-------------|
+| 🔖 `/claude-memory:save` | Manual checkpoint — save state to `.mci` right now |
+| 🔁 `/claude-memory:recall` | Load and display last saved M/C/I state |
+| 📊 `/claude-memory:status` | Dashboard — marker counts, .mci health, session info |
+
+### 📦 Option B: Manual Install (git clone)
+
+For full control or if you want to customize the hooks:
 
 ```bash
 git clone https://github.com/hlsitechio/claude-memory.git

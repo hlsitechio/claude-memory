@@ -1,0 +1,21 @@
+{
+  "name": "claude-memory",
+  "version": "1.0.0",
+  "description": "Persistent M/C/I memory for Claude Code — survives compacts and session restarts",
+  "author": {
+    "name": "hlsitechio",
+    "url": "https://github.com/hlsitechio"
+  },
+  "repository": "https://github.com/hlsitechio/claude-memory",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "persistence",
+    "hooks",
+    "mci",
+    "context-window",
+    "session-management",
+    "claude-code",
+    "anthropic"
+  ]
+}
