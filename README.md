@@ -1,5 +1,9 @@
 # claude-memory
 
+<p align="center">
+  <img src="banner.png" alt="claude-memory — Persistent M/C/I Memory for Claude Code" width="100%">
+</p>
+
 **Persistent memory for Claude Code sessions using the M/C/I system.**
 
 Claude Code starts every session blank. When the context window fills up, auto-compact fires and your conversation history is compressed. Next session? Complete amnesia.
