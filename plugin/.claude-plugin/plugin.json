@@ -1,6 +1,6 @@
 {
   "name": "claude-memory",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Persistent M/C/I memory for Claude Code — survives compacts and session restarts",
   "author": {
     "name": "hlsitechio",

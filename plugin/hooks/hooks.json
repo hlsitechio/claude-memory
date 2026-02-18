@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.sh\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.js\"",
             "timeout": 30
           }
         ]
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/prompt-capture.sh\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/prompt-capture.js\"",
             "timeout": 5
           }
         ]
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/pre-compact.sh\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/pre-compact.js\"",
             "timeout": 30
           }
         ]
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/session-stop.sh\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/session-stop.js\"",
             "timeout": 30
           }
         ]
