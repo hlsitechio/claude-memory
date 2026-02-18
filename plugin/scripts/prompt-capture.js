@@ -163,6 +163,69 @@ async function main() {
     }
 
     // ===========================================================================
+    // AUTO-CHECKPOINT (every ~10 prompts — crash insurance)
+    // ===========================================================================
+    const counterFile = path.join(MEMORY_BASE, 'prompt-counter');
+    let promptCount = 0;
+    try { promptCount = parseInt(readFile(counterFile)) || 0; } catch {}
+    promptCount++;
+    try { fs.writeFileSync(counterFile, String(promptCount)); } catch {}
+
+    const AUTO_CHECKPOINT_INTERVAL = 10;
+    if (promptCount % AUTO_CHECKPOINT_INTERVAL === 0) {
+      const mciFile = path.join(sessionPath, 'memory.mci');
+      // Only auto-checkpoint if there are marker files with content
+      const getLastEntry = (file) => {
+        const content = readFile(file);
+        const matches = content.match(/^## .+/gm);
+        if (matches && matches.length > 0) return matches[matches.length - 1].replace(/^## [\d:]+ - /, '');
+        return '';
+      };
+
+      const latestFact = getLastEntry(path.join(sessionPath, 'facts.md'));
+      const latestContext = getLastEntry(path.join(sessionPath, 'context.md'));
+      const latestIntent = getLastEntry(path.join(sessionPath, 'intent.md'));
+
+      // Also extract from JSONL if markers are empty
+      let jFact = '', jContext = '', jIntent = '';
+      if (!latestFact && !latestContext && !latestIntent) {
+        const recentLines = tailLines(jsonlFile, 200);
+        let lastUserMsgs = [];
+        let toolNames = {};
+        for (const line of recentLines) {
+          try {
+            const entry = JSON.parse(line);
+            if (entry.type === 'user') {
+              const c = entry.message?.content;
+              let text = typeof c === 'string' ? c : (Array.isArray(c) ? c.filter(b => b.type === 'text').map(b => b.text).join(' ') : '');
+              if (text) lastUserMsgs.push(text.slice(0, 80));
+            }
+            if (entry.type === 'assistant' && Array.isArray(entry.message?.content)) {
+              for (const block of entry.message.content) {
+                if (block.type === 'tool_use') toolNames[block.name] = (toolNames[block.name] || 0) + 1;
+              }
+            }
+          } catch {}
+        }
+        const topTools = Object.entries(toolNames).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n]) => n).join(', ');
+        jFact = `[AUTO] Prompt #${promptCount}. Tools: ${topTools || 'none'}`;
+        jContext = `User topics: ${lastUserMsgs.slice(-3).join(' | ').slice(0, 150)}`;
+        jIntent = 'Continue from last user message.';
+      }
+
+      const cpMemory = latestFact || jFact || `[AUTO] Checkpoint at prompt #${promptCount}`;
+      const cpContext = latestContext || jContext || `Session in progress at ${TIMESTAMP}`;
+      const cpIntent = latestIntent || jIntent || 'Continue current work.';
+
+      appendFile(mciFile, `
+--- [AUTO] Checkpoint @ ${TIMESTAMP} (prompt #${promptCount}) ---
+Memory: ${cpMemory}
+Context: ${cpContext}
+Intent: ${cpIntent}
+`);
+    }
+
+    // ===========================================================================
     // CONTEXT ESTIMATION
     // ===========================================================================
     let contextWarning = '';
