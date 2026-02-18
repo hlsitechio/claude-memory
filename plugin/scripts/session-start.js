@@ -45,6 +45,25 @@ function createSessionFiles(sessionPath, num) {
 }
 
 // ============================================================================
+// FIRST-RUN DETECTION & TEMPLATE SETUP
+// ============================================================================
+const isFirstRun = !exists(MEMORY_BASE) || !exists(path.join(MEMORY_BASE, 'sessions'));
+
+if (isFirstRun) {
+  mkdirp(MEMORY_BASE);
+  // Copy starter templates to project root if they don't exist
+  const pluginRoot = path.resolve(__dirname, '..');
+  const templatesDir = path.join(pluginRoot, 'templates');
+  for (const file of ['IDENTITY.md', 'PREFERENCES.md']) {
+    const src = path.join(templatesDir, file);
+    const dest = path.join(PROJECT_DIR, file);
+    if (exists(src) && !exists(dest)) {
+      try { fs.copyFileSync(src, dest); } catch {}
+    }
+  }
+}
+
+// ============================================================================
 // SESSION MANAGEMENT
 // ============================================================================
 mkdirp(SESSION_DIR);
@@ -201,14 +220,65 @@ ACTION: Read the M/C/I entries below. Recover your Intent. Continue work.
 Do NOT ask what you were doing. The .mci TELLS you.`;
 }
 
+// First-run onboarding guide
+let onboardingGuide = '';
+if (isFirstRun) {
+  onboardingGuide = `
+=== FIRST RUN — WELCOME TO M/C/I MEMORY ===
+
+You just got persistent memory. Here's what happened:
+
+1. CREATED: .claude-memory/sessions/ directory (your memory vault)
+2. CREATED: Session files (facts.md, context.md, intent.md, memory.md)
+3. COPIED: IDENTITY.md and PREFERENCES.md templates to project root (if they didn't exist)
+
+HOW THIS WORKS:
+- You now have 4 hooks running automatically:
+  • SessionStart: Loads your last saved state when you start
+  • UserPromptSubmit: Monitors context usage, captures markers
+  • PreCompact: Saves your state BEFORE auto-compact wipes context
+  • Stop: Generates session summary when you exit
+
+WHAT YOU SHOULD DO RIGHT NOW:
+1. Greet the user and explain you now have persistent memory across sessions
+2. Offer to customize IDENTITY.md (who you should be) and PREFERENCES.md (how to communicate)
+3. Start using markers naturally — they auto-save to files:
+   • [!] for critical facts → saves to facts.md
+   • [*] for context/significance → saves to context.md
+   • [>] for next steps/goals → saves to intent.md
+   • [i] for observations/notes → saves to memory.md
+4. Write a [PC] entry to memory.mci before any heavy operation (this is your lifeline across compacts)
+
+EXAMPLE FIRST RESPONSE:
+"Memory system initialized! I now have persistent memory across sessions.
+Your session files are at: <session_path>
+
+I've set up starter templates:
+- IDENTITY.md — defines my personality and approach
+- PREFERENCES.md — defines how I communicate with you
+
+Want to customize these, or should we jump straight into work?
+
+[i] First session initialized. M/C/I memory system active."
+(Then you'd append that [i] entry to memory.md)
+
+SKILLS AVAILABLE:
+- /claude-memory:save — manually checkpoint your state
+- /claude-memory:recall — load last saved M/C/I state
+- /claude-memory:status — show session dashboard
+
+The user installed this plugin to give you memory. Make them feel the difference from the first message.`;
+}
+
 const context = `# M/C/I Session - ${now.toISOString().slice(0, 10)} ${SESSION_TIME}
 
 === STATUS ===
-[+] SESSION: #${sessionNum} (${sessionStatus})
+[+] SESSION: #${sessionNum} (${sessionStatus})${isFirstRun ? ' (FIRST RUN)' : ''}
 Path: ${sessionPath}
 MCI: ${mciLoaded ? 'LOADED' : 'EMPTY - fresh session'}
 Post-Compact: ${isPostCompact ? 'YES - recovering' : 'No'}
 ${compactAlert}
+${onboardingGuide}
 ${loadedContext}`;
 
 const output = {

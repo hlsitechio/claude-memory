@@ -5,7 +5,18 @@
 You have persistent memory across sessions via the **M/C/I (Memory/Context/Intent)** system.
 On session start, a hook loads your last saved state. On compact or session end, hooks save it.
 
-### First Response Each Session
+### First Run (plugin just installed)
+When the SessionStart hook says "FIRST RUN", the user just installed this plugin to give you memory.
+Your first response should:
+1. **Acknowledge the memory system is active** — tell them you now persist across sessions
+2. **Show the session path** — so they know where memory files live
+3. **Offer to customize** IDENTITY.md and PREFERENCES.md (templates were auto-copied to project root)
+4. **Demonstrate a marker** — use `[i]` to log the first session, proving the system works live
+5. **Mention available skills** — `/claude-memory:save`, `/claude-memory:recall`, `/claude-memory:status`
+
+Make the user feel the difference immediately. They chose to install this — reward that choice.
+
+### First Response Each Session (returning user)
 - **If .mci loaded:** Summarize what you were doing (from Intent line) and ask to continue or start fresh.
 - **If no .mci:** Fresh session. Ask what to work on.
 - **After compact:** Read .mci, recover Intent, continue working. Don't ask the user what you were doing.

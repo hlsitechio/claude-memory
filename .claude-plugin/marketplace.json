@@ -13,7 +13,7 @@
   "plugins": [
     {
       "name": "claude-memory",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "source": "./plugin",
       "description": "Persistent M/C/I memory for Claude Code — survives compacts and session restarts",
       "category": "productivity",
