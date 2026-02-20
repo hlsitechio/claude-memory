@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // ============================================================================
-// SESSION STOP - Ensures session ends with valid .mci (Node.js - cross-platform)
+// MCI v2 SESSION STOP — state.md snapshot + session summary (Node.js)
+// Ensures session ends with valid .mci (snapshots state.md if available)
 // Generates session-summary.md with tool stats and file list
 // ============================================================================
 
@@ -20,6 +21,18 @@ function tailLines(filePath, n) {
     const lines = fs.readFileSync(filePath, 'utf8').split('\n');
     return lines.slice(-n);
   } catch { return []; }
+}
+
+// Extract section from state.md
+function extractSection(content, sectionName, maxChars = 2000) {
+  const regex = new RegExp(`^## ${sectionName}\\s*$`, 'm');
+  const match = content.match(regex);
+  if (!match) return '';
+  const startIdx = match.index + match[0].length;
+  const rest = content.slice(startIdx);
+  const nextHeader = rest.match(/^## /m);
+  const section = nextHeader ? rest.slice(0, nextHeader.index) : rest;
+  return section.trim().slice(0, maxChars);
 }
 
 function readStdin() {
@@ -61,6 +74,7 @@ async function main() {
   }
 
   const mciFile = path.join(sessionPath, 'memory.mci');
+  const stateFile = path.join(sessionPath, 'state.md');
 
   // Find JSONL
   let jsonlFile = '';
@@ -85,24 +99,32 @@ async function main() {
     }
   }
 
-  if (!jsonlFile || !exists(jsonlFile)) {
-    process.stdout.write('{"suppressOutput": true}');
-    process.exit(0);
+  // ============================================================================
+  // STEP 1: SNAPSHOT state.md TO .mci (v2 — primary approach)
+  // ============================================================================
+  let mciWritten = false;
+
+  if (exists(stateFile)) {
+    const stateContent = readFile(stateFile);
+    if (stateContent.length > 200) {
+      const goal = extractSection(stateContent, 'Goal', 1500);
+      const progress = extractSection(stateContent, 'Progress', 2000);
+      const findings = extractSection(stateContent, 'Findings', 2000);
+
+      appendFile(mciFile, `
+--- [STOP] state.md Snapshot @ ${TIMESTAMP} ---
+Memory: GOAL: ${goal || 'No goal set'}
+Context: PROGRESS: ${progress || 'No progress tracked'}
+Intent: FINDINGS: ${findings || 'No findings yet'}
+`);
+      mciWritten = true;
+    }
   }
 
   // ============================================================================
-  // STEP 1: VALIDATE .MCI
+  // STEP 2: FALLBACK — Auto-generate from JSONL if no state.md
   // ============================================================================
-  let mciComplete = false;
-  if (exists(mciFile)) {
-    const content = readFile(mciFile);
-    mciComplete = /^Memory:/m.test(content) && /^Context:/m.test(content) && /^Intent:/m.test(content);
-  }
-
-  // ============================================================================
-  // STEP 2: AUTO-GENERATE IF INCOMPLETE
-  // ============================================================================
-  if (!mciComplete) {
+  if (!mciWritten && jsonlFile && exists(jsonlFile)) {
     const lines = fs.readFileSync(jsonlFile, 'utf8').split('\n');
     let toolCounts = {};
     let filesTouched = new Set();
@@ -158,45 +180,46 @@ Intent: ${stopIntent}
   // ============================================================================
   // STEP 3: GENERATE SESSION SUMMARY
   // ============================================================================
-  const allLines = fs.readFileSync(jsonlFile, 'utf8').split('\n');
-  let userCount = 0;
-  let toolStats = {};
-  let allFiles = new Set();
+  if (jsonlFile && exists(jsonlFile)) {
+    const allLines = fs.readFileSync(jsonlFile, 'utf8').split('\n');
+    let userCount = 0;
+    let toolStats = {};
+    let allFiles = new Set();
 
-  for (const line of allLines) {
-    try {
-      const entry = JSON.parse(line);
-      if (entry.type === 'user') userCount++;
-      if (entry.type === 'assistant' && Array.isArray(entry.message?.content)) {
-        for (const block of entry.message.content) {
-          if (block.type === 'tool_use') {
-            toolStats[block.name] = (toolStats[block.name] || 0) + 1;
-            if ((block.name === 'Write' || block.name === 'Edit') && block.input?.file_path) {
-              allFiles.add(block.input.file_path);
+    for (const line of allLines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === 'user') userCount++;
+        if (entry.type === 'assistant' && Array.isArray(entry.message?.content)) {
+          for (const block of entry.message.content) {
+            if (block.type === 'tool_use') {
+              toolStats[block.name] = (toolStats[block.name] || 0) + 1;
+              if ((block.name === 'Write' || block.name === 'Edit') && block.input?.file_path) {
+                allFiles.add(block.input.file_path);
+              }
             }
           }
         }
-      }
-    } catch {}
-  }
+      } catch {}
+    }
 
-  const toolCount = Object.values(toolStats).reduce((a, b) => a + b, 0);
-  const toolLines = Object.entries(toolStats).sort((a, b) => b[1] - a[1]).slice(0, 15)
-    .map(([name, count]) => `  ${String(count).padStart(6)} ${name}`).join('\n');
-  const fileLines = [...allFiles].slice(0, 20).join('\n');
+    const toolCount = Object.values(toolStats).reduce((a, b) => a + b, 0);
+    const toolLines = Object.entries(toolStats).sort((a, b) => b[1] - a[1]).slice(0, 15)
+      .map(([name, count]) => `  ${String(count).padStart(6)} ${name}`).join('\n');
+    const fileLines = [...allFiles].slice(0, 20).join('\n');
+    const startTime = readFile(path.join(sessionPath, 'memory.md')).match(/\d{2}:\d{2}/)?.[0] || 'unknown';
+    const mciEntries = (readFile(mciFile).match(/^Memory:/gm) || []).length;
 
-  const startTime = readFile(path.join(sessionPath, 'memory.md')).match(/\d{2}:\d{2}/)?.[0] || 'unknown';
-  const mciEntries = (readFile(mciFile).match(/^Memory:/gm) || []).length;
-
-  const summary = `# Session Summary - ${new Date().toISOString().slice(0, 10)} ${TIMESTAMP}
+    const summary = `# Session Summary - ${new Date().toISOString().slice(0, 10)} ${TIMESTAMP}
 
 ## Duration
 - Started: ${startTime}
 - Ended: ${TIMESTAMP}
 
-## M/C/I Status
-- Complete: ${mciComplete ? 'YES (saved by Claude)' : 'NO (auto-generated at stop)'}
-- Entries: ${mciEntries}
+## Memory Status
+- state.md: ${exists(stateFile) ? `EXISTS (${readFile(stateFile).length} bytes)` : 'MISSING'}
+- MCI saved by: ${mciWritten ? 'state.md snapshot' : 'auto-generated from JSONL'}
+- MCI entries: ${mciEntries}
 
 ## Stats
 - User messages: ~${userCount}
@@ -209,11 +232,12 @@ ${toolLines}
 ${fileLines}
 `;
 
-  try { fs.writeFileSync(path.join(sessionPath, 'session-summary.md'), summary.slice(0, 8000)); } catch {}
+    try { fs.writeFileSync(path.join(sessionPath, 'session-summary.md'), summary.slice(0, 8000)); } catch {}
+  }
 
   // Update session log
   appendFile(path.join(sessionPath, 'memory.md'),
-    `\n## ${TIMESTAMP} - SESSION ENDED [MCI: ${mciComplete ? 'COMPLETE' : 'AUTO-GENERATED'}]\n`);
+    `\n## ${TIMESTAMP} - SESSION ENDED [state.md: ${exists(stateFile) ? 'EXISTS' : 'MISSING'}]\n`);
 
   process.stdout.write('{"suppressOutput": true}');
   process.exit(0);
