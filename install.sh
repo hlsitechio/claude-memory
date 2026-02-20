@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================================
 # claude-memory installer
-# One-command setup for persistent M/C/I memory in Claude Code
+# One-command setup for persistent memory in Claude Code
 # Usage: ./install.sh [project-directory]
 # ============================================================================
 
@@ -45,7 +45,7 @@ if [ -f "$PROJECT_DIR/CLAUDE.md" ]; then
     echo ""
     echo "[?] CLAUDE.md already exists. What do you want to do?"
     echo "    1) Overwrite with claude-memory template"
-    echo "    2) Append M/C/I rules to existing CLAUDE.md"
+    echo "    2) Append memory rules to existing CLAUDE.md"
     echo "    3) Skip (merge manually later)"
     read -rp "    Choice [1/2/3]: " CHOICE
     case "$CHOICE" in
@@ -55,7 +55,7 @@ if [ -f "$PROJECT_DIR/CLAUDE.md" ]; then
            echo "---" >> "$PROJECT_DIR/CLAUDE.md"
            echo "" >> "$PROJECT_DIR/CLAUDE.md"
            cat "$SCRIPT_DIR/CLAUDE.md" >> "$PROJECT_DIR/CLAUDE.md"
-           echo "[+] M/C/I rules appended to CLAUDE.md" ;;
+           echo "[+] memory rules appended to CLAUDE.md" ;;
         *) echo "[i] Skipped. Merge from: $SCRIPT_DIR/CLAUDE.md" ;;
     esac
 else

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# MCI v2 PROMPT CAPTURE — state.md health + context estimation
+# claude-memory v2 PROMPT CAPTURE — state.md health + context estimation
 # Fires on every UserPromptSubmit — must be FAST (<2s)
 # Also captures legacy markers from assistant responses (backward compat)
 # ============================================================================

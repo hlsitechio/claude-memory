@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// MCI v2 PRE-COMPACT — Snapshots FULL state.md into .mci (Node.js - cross-platform)
+// claude-memory v2 PRE-COMPACT — Snapshots FULL state.md into .mci (Node.js - cross-platform)
 // PRIMARY: Read state.md → extract Goal/Progress/Findings → write to .mci
 // FALLBACK 1: Assemble from marker files (backward compat)
 // FALLBACK 2: Extract from JSONL (emergency)

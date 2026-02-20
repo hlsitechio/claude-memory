@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# MCI v2 PRE-COMPACT — Snapshots FULL state.md into .mci
+# claude-memory v2 PRE-COMPACT — Snapshots FULL state.md into .mci
 # PRIMARY: Read state.md content → write to .mci
 # FALLBACK 1: Assemble from marker files (backward compat)
 # FALLBACK 2: Extract from JSONL (emergency)

@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# MCI v2 SESSION START — state.md based memory system
+# claude-memory v2 SESSION START — state.md based memory system
 # Creates/resumes sessions, creates state.md template, loads .mci, injects rules
 # ============================================================================
 
@@ -173,7 +173,7 @@ if [ -f "$SESSION_PATH/state.md" ]; then
 fi
 
 # ============================================================================
-# MCI v2 RULES
+# claude-memory v2 RULES
 # ============================================================================
 
 MCI_RULES="
@@ -232,7 +232,7 @@ Do NOT ask what you were doing. state.md TELLS you.
 Compact info: $COMPACT_INFO"
 fi
 
-CONTEXT="# M/C/I v2 Session - $(date '+%Y-%m-%d %I:%M%p')
+CONTEXT="# claude-memory v2 Session - $(date '+%Y-%m-%d %I:%M%p')
 
 === STATUS ===
 [+] SESSION: #$SESSION_NUM ($SESSION_STATUS)

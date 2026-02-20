@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// MCI v2 SESSION STOP — state.md snapshot + session summary (Node.js)
+// claude-memory v2 SESSION STOP — state.md snapshot + session summary (Node.js)
 // Ensures session ends with valid .mci (snapshots state.md if available)
 // Generates session-summary.md with tool stats and file list
 // ============================================================================

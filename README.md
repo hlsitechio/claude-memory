@@ -83,9 +83,9 @@ Build the user authentication system with JWT tokens
 
 **Why this works:** state.md lives on **disk**, not in context. When auto-compact fires, state.md is untouched. Claude reads it back and picks up exactly where it left off.
 
-### 📦 M/C/I Triplets (Safety Net)
+### 📦 State Snapshots (Safety Net)
 
-Every piece of state is also backed up as an **M/C/I triplet** in `.mci`:
+Every piece of state is also backed up as a **state snapshot** in `.mci`:
 
 | Component | What it captures |
 |-----------|-----------------|
@@ -364,7 +364,7 @@ For git-clone installs, the installer generates `.claude/settings.local.json`:
 | Constant | Default | Purpose |
 |----------|---------|---------|
 | `RESUME_TIMEOUT` | `14400` (4 hours) | Seconds before creating a new session |
-| `MCI_LOOKBACK_DAYS` | `7` | Days to search back for .mci recovery |
+| `SNAPSHOT_LOOKBACK_DAYS` | `7` | Days to search back for .mci recovery |
 | `AUTO_CHECKPOINT_INTERVAL` | `10` | Prompts between auto-checkpoints |
 | `CONTEXT_LIMIT` | `1000000` | Estimated JSONL bytes at compact |
 | `WARN_BYTES` | `700000` | ~70% — gentle checkpoint reminder |
@@ -469,7 +469,7 @@ MIT — see [LICENSE](LICENSE)
 - Cross-platform Node.js hooks
 
 ### v1.0.0 — Initial Release
-- M/C/I triplet memory system
+- Persistent state memory system
 - 4 lifecycle hooks (SessionStart, UserPromptSubmit, PreCompact, Stop)
 - Marker-to-file contract
 - Session management with date-based directories

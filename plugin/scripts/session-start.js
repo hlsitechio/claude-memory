@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================================
-// MCI v2 SESSION START — state.md based memory system (Node.js - cross-platform)
+// claude-memory v2 SESSION START — state.md based memory system (Node.js - cross-platform)
 // Creates/resumes sessions, creates state.md template, loads .mci, injects v2 rules
 // v2.0.0 — Living state.md replaces append-only marker files
 // ============================================================================
@@ -282,7 +282,7 @@ if (exists(stateFile)) {
 }
 
 // ============================================================================
-// MCI v2 RULES (always injected)
+// claude-memory v2 RULES (always injected)
 // ============================================================================
 const mciRules = `
 === MEMORY SYSTEM v2 — state.md ===
@@ -344,14 +344,14 @@ if (crashDetected && !isPostCompact) {
 === CRASH RECOVERY ===
 The previous session did NOT end cleanly (no Stop hook fired).
 ${previousSessionPath ? `Crashed session: ${previousSessionPath}` : 'Recovering in-place.'}
-${mciLoaded ? 'M/C/I was recovered from: ' + mciSource : 'WARNING: No .mci found — check state.md and marker files for context.'}
-ACTION: Read state.md first, then review loaded M/C/I. Resume where the user left off.`;
+${mciLoaded ? 'State was recovered from: ' + mciSource : 'WARNING: No .mci found — check state.md and marker files for context.'}
+ACTION: Read state.md first, then review loaded state. Resume where the user left off.`;
 }
 
 let onboardingGuide = '';
 if (isFirstRun) {
   onboardingGuide = `
-=== FIRST RUN — WELCOME TO M/C/I MEMORY v2 ===
+=== FIRST RUN — WELCOME TO claude-memory v2 ===
 
 You just got persistent memory powered by state.md. Here's what happened:
 
@@ -378,7 +378,7 @@ SKILLS AVAILABLE:
 - /claude-memory:status — show session dashboard`;
 }
 
-const context = `# M/C/I v2 Session - ${now.toISOString().slice(0, 10)} ${SESSION_TIME}
+const context = `# claude-memory v2 Session - ${now.toISOString().slice(0, 10)} ${SESSION_TIME}
 
 === STATUS ===
 [+] SESSION: #${sessionNum} (${sessionStatus})${isFirstRun ? ' (FIRST RUN)' : ''}

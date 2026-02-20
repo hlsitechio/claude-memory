@@ -23,7 +23,6 @@
         "hooks",
         "sessions",
         "context-window",
-        "mci",
         "state-md",
         "compact-recovery"
       ]

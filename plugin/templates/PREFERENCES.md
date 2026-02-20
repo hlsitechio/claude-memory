@@ -17,7 +17,7 @@
 - Check existing context before asking questions
 - Use available tools before requesting help
 - Save progress with markers during long tasks
-- Read your .mci at session start to recover context
+- Read your state.md and snapshot file at session start
 
 ## Don't
 - Repeat questions back

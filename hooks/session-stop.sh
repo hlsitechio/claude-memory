@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# MCI v2 SESSION STOP — state.md snapshot + session summary
+# claude-memory v2 SESSION STOP — state.md snapshot + session summary
 # Ensures session ends with valid .mci (snapshots state.md if available)
 # Generates session-summary.md with tool stats and file list
 # ============================================================================

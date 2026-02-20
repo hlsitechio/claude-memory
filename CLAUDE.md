@@ -1,8 +1,8 @@
-# CLAUDE.md - M/C/I Memory System v2
+# CLAUDE.md - claude-memory v2
 
 ## How This Works
 
-You have persistent memory across sessions via the **M/C/I v2** system powered by **state.md**.
+You have persistent memory across sessions via the **claude-memory v2** system powered by **state.md**.
 On session start, a hook loads your last saved state. On compact or session end, hooks snapshot state.md.
 
 ## state.md — Your External Brain

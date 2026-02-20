@@ -13,7 +13,7 @@
     "memory",
     "persistence",
     "hooks",
-    "mci",
+    "state-md",
     "context-window",
     "session-management",
     "claude-code",

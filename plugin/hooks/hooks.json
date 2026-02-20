@@ -1,5 +1,5 @@
 {
-  "description": "M/C/I persistent memory hooks — automatic session management, marker capture, compact recovery, and session summaries",
+  "description": "Persistent state hooks — automatic session management, state.md monitoring, compact recovery, and session summaries",
   "hooks": {
     "SessionStart": [
       {
