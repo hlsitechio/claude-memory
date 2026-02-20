@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <strong>Give Claude Code a memory that survives everything.</strong><br>
-  <em>Compacts, crashes, restarts, weekends — your AI never forgets again.</em>
+  <strong>Give Claude a memory that survives everything.</strong><br>
+  <em>Compacts, crashes, restarts, weekends — works in Claude Code AND Claude Cowork.</em>
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="v2.0.0">
-  <img src="https://img.shields.io/badge/Claude_Code-v2.1+-black?style=flat-square&logo=anthropic&logoColor=white" alt="Claude Code">
+  <img src="https://img.shields.io/badge/Claude_Code_+_Cowork-black?style=flat-square&logo=anthropic&logoColor=white" alt="Claude Code + Cowork">
   <img src="https://img.shields.io/badge/platform-Linux_%7C_macOS_%7C_Windows-lightgrey?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/Node.js-cross--platform-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/hooks-4_automated-blue?style=flat-square" alt="4 Hooks">
@@ -38,11 +38,32 @@
 
 **That's it.** Restart Claude Code and memory is active. Claude will never lose context again.
 
+> 💡 **Works in Claude Cowork too!** Same state.md, same memory. Start a task in Code, review it in Cowork — seamless cross-platform memory.
+
 ---
 
-> 🚨 **The problem:** Claude Code starts every session blank. When the context window fills up, auto-compact fires and your conversation history is compressed. Terminal crash? **Complete amnesia.**
+> 🚨 **The problem:** Claude starts every session blank. When the context window fills up, auto-compact fires and your conversation history is compressed. Terminal crash? Switch from Code to Cowork? **Complete amnesia.**
 >
-> ✅ **The fix:** `claude-memory` — a hook-based system that automatically saves and restores your working state across sessions, compacts, crashes, and restarts.
+> ✅ **The fix:** `claude-memory` — a hook-based system that automatically saves and restores your working state across sessions, compacts, crashes, platform switches, and restarts.
+
+### 🔀 Cross-Platform: Code ↔ Cowork
+
+```
+Claude Code (terminal)              Claude Cowork (desktop)
+┌────────────────────┐              ┌────────────────────┐
+│ Build feature       │              │ Review progress     │
+│ state.md updated    │───disk────→ │ Reads state.md      │
+│ Goal: Auth system   │              │ "You're 3/7 done   │
+│ Progress: 3/7 done  │              │  on auth system,    │
+│ Findings: bypass!   │              │  found a bypass..." │
+└────────────────────┘              └────────────────────┘
+              Same state.md on disk
+```
+
+- **Hunt in Code** → findings saved to state.md
+- **Review in Cowork** → `/claude-memory:recall` loads your full state
+- **Set goals in Cowork** → Code picks them up on next session start
+- **Crash Code?** → open Cowork, your memory is on disk, nothing lost
 
 ---
 
@@ -454,6 +475,7 @@ MIT — see [LICENSE](LICENSE)
 ### v2.0.0 — state.md Living Document Architecture
 - **Breaking:** Replaced append-only marker files with single `state.md` living document
 - **New:** `state.md` with Goal/Progress/Findings sections — Claude's external brain
+- **New:** Cross-platform support — Claude Code + Claude Cowork share the same state.md
 - **New:** Pre-compact snapshots FULL state.md content (not just last line)
 - **New:** 3-tier fallback: state.md → marker files → JSONL transcript
 - **New:** Auto-checkpoint every ~10 prompts snapshots state.md to .mci

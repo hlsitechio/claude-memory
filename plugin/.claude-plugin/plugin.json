@@ -1,7 +1,7 @@
 {
   "name": "claude-memory",
   "version": "2.0.0",
-  "description": "Persistent memory for Claude Code — state.md living document survives compacts, crashes, and restarts",
+  "description": "Persistent memory for Claude Code + Cowork — state.md living document survives compacts, crashes, and platform switches",
   "homepage": "https://github.com/hlsitechio/claude-memory",
   "author": {
     "name": "hlsitechio",
@@ -17,6 +17,8 @@
     "context-window",
     "session-management",
     "claude-code",
+    "claude-cowork",
+    "cross-platform",
     "anthropic"
   ]
 }

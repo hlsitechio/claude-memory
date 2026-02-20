@@ -15,7 +15,7 @@
       "name": "claude-memory",
       "version": "2.0.0",
       "source": "./plugin",
-      "description": "Persistent memory for Claude Code — state.md living document survives compacts, crashes, and restarts",
+      "description": "Persistent memory for Claude Code + Cowork — state.md living document survives compacts, crashes, and platform switches",
       "category": "productivity",
       "tags": [
         "memory",
@@ -24,7 +24,9 @@
         "sessions",
         "context-window",
         "state-md",
-        "compact-recovery"
+        "compact-recovery",
+        "cross-platform",
+        "claude-cowork"
       ]
     }
   ]
