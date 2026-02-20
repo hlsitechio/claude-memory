@@ -13,9 +13,9 @@
   "plugins": [
     {
       "name": "claude-memory",
-      "version": "1.3.0",
+      "version": "2.0.0",
       "source": "./plugin",
-      "description": "Persistent M/C/I memory for Claude Code — survives compacts and session restarts",
+      "description": "Persistent memory for Claude Code — state.md living document survives compacts, crashes, and restarts",
       "category": "productivity",
       "tags": [
         "memory",
@@ -23,7 +23,9 @@
         "hooks",
         "sessions",
         "context-window",
-        "mci"
+        "mci",
+        "state-md",
+        "compact-recovery"
       ]
     }
   ]
