@@ -5,47 +5,134 @@
 You have persistent memory across sessions via the **claude-memory v2** system powered by **state.md**.
 On session start, a hook loads your last saved state. On compact or session end, hooks snapshot state.md.
 
+### The Key Insight (v2)
+v1 used 4 append-only marker files. Pre-compact grabbed only the LAST line from each.
+Result: everything except the final entry was LOST on compact.
+
+**v2 uses ONE living state.md file that gets UPDATED (not appended). Full content survives compact.**
+
+### First Run (plugin just installed)
+When the SessionStart hook says "FIRST RUN", the user just installed this plugin to give you memory.
+Your first response should:
+1. **Acknowledge the memory system is active** — tell them you now persist across sessions
+2. **Show the session path** — so they know where memory files live
+3. **Offer to customize** IDENTITY.md and PREFERENCES.md (templates were auto-copied to project root)
+4. **Demonstrate state.md** — update it with the first session's goal
+5. **Mention available skills** — `/claude-memory:save`, `/claude-memory:recall`, `/claude-memory:status`
+
+Make the user feel the difference immediately. They chose to install this — reward that choice.
+
+### First Response Each Session (returning user)
+- **If .mci loaded:** Summarize what you were doing (from the .mci) and ask to continue or start fresh.
+- **If no .mci:** Fresh session. Ask what to work on.
+- **After compact:** Read state.md, recover your full state, continue working. Don't ask the user what you were doing.
+
+---
+
 ## state.md — Your External Brain
 
-`state.md` is a living document with 3 sections: **Goal**, **Progress**, **Findings**.
-It lives on disk, survives compacts untouched. Keep it current.
+**This is the most important file in the system.**
 
-### How to Use
-1. **Update Goal** when mission changes (use Edit tool)
-2. **Update Progress** as you work — check off tasks, add new ones
-3. **Update Findings** when you discover important data
-4. **Every 3-5 tool calls** — quick state.md update
+`state.md` is a living document with 3 sections:
 
-### Post-Compact Recovery
-1. Read `state.md` — your full state is there
-2. Check Progress — see what's done, what's next
-3. Resume from first unchecked item
-4. DO NOT ask user what you were doing — state.md tells you
+```markdown
+# Session State
+> Last updated: HH:MM
+
+## Goal
+(What you're working on and why)
+
+## Progress
+- [x] Completed tasks
+- [ ] Pending tasks
+
+## Findings
+(Important discoveries, data, results)
+```
+
+### How to Use state.md
+1. **Update Goal** when the mission changes (use Edit tool)
+2. **Update Progress** as you work — check off tasks, add new ones (use Edit tool)
+3. **Update Findings** when you discover important data (use Edit tool)
+4. **Every 3-5 tool calls** — quick state.md update to stay current
+
+### Why state.md Works
+- It lives on DISK, not in context — survives compacts untouched
+- Pre-compact hook snapshots its FULL content to .mci as safety net
+- After compact, READ it to recover your complete state
+- No complex marker contracts — just keep one file current
+
+---
 
 ## Markers
 
+Markers are **display formatting** that also trigger legacy file captures as backup.
+
+### Display markers (primary use):
+
 | Marker | Meaning | state.md Action |
 |--------|---------|----------------|
-| `[+]` | Success | (display only) |
-| `[-]` | Failed | (display only) |
-| `[!]` | Critical | → Edit Findings |
-| `[>]` | Next step | → Edit Progress |
-| `[*]` | Context | → Edit Goal |
-| `[i]` | Info | → Append to memory.md |
+| `[+]` | Success / completed | (display only) |
+| `[-]` | Failed / not found | (display only) |
+| `[!]` | Critical finding | → Edit Findings section |
+| `[>]` | Next step | → Edit Progress section |
+| `[*]` | Context shift | → Edit Goal section |
+| `[i]` | Info note | → Append to memory.md |
+
+### Lifecycle markers:
+
+| Marker | Action |
+|--------|--------|
+| `[PC]` | Pre-compact — hooks handle this automatically via state.md snapshot |
+| `[AC]` | Post-compact — read state.md for recovery |
+
+---
+
+## Post-Compact Recovery
+
+When auto-compact fires:
+1. Pre-compact hook snapshots state.md → .mci (automatic)
+2. SessionStart detects post-compact, tells you to read state.md
+3. **READ state.md** — your Goal, Progress, and Findings are all there
+4. Resume from the first unchecked Progress item
+5. **DO NOT ask the user what you were doing** — state.md tells you
+
+---
 
 ## Session Files
+
+Each session creates a directory with these files:
 ```
 session-N/
-  state.md        ← primary memory (v2)
-  memory.mci      ← auto-generated safety net
-  facts.md        ← legacy [!] backup
-  context.md      ← legacy [*] backup
-  intent.md       ← legacy [>] backup
-  memory.md       ← session log
+  state.md        ← YOUR EXTERNAL BRAIN (v2 primary)
+  facts.md        ← [!] entries (legacy backup)
+  context.md      ← [*] entries (legacy backup)
+  intent.md       ← [>] entries (legacy backup)
+  memory.md       ← [i] entries + session log
+  memory.mci      ← compact recovery lifeline (auto-generated)
 ```
 
-## Auto-Save
-- Pre-compact hook snapshots state.md → .mci automatically
-- Auto-checkpoint every ~10 prompts
-- Stop hook snapshots at session end
-- Legacy markers auto-captured for backward compat
+---
+
+## .mci File Format
+
+The `.mci` file is auto-generated by hooks as a safety net. In v2, it contains state.md snapshots:
+
+```
+--- [PC] state.md Snapshot @ HH:MM:SS ---
+Memory: GOAL: <goal content>
+Context: PROGRESS: <progress content>
+Intent: FINDINGS: <findings content>
+```
+
+---
+
+## Auto-Save Rules
+
+1. **Pre-compact hook** automatically snapshots state.md → .mci
+2. **Auto-checkpoint** every ~10 prompts snapshots state.md → .mci
+3. **Stop hook** snapshots state.md → .mci at session end
+4. **After compact:** Read state.md, confirm state, continue working
+5. **state.md is sacred.** Keep it current. It's how you survive compacts.
+6. **Legacy markers** are still auto-captured for backward compatibility
+7. **`[i]` entries go to `memory.md`** — session log, not .mci
