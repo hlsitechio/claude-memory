@@ -7,32 +7,35 @@ description: |
 
 # Save Session State
 
-Perform a manual pre-compact save by writing a `[PC]` entry to the session's `memory.mci` file.
+Perform a manual save by snapshotting `state.md` into the session's `memory.mci` file.
 
 ## What To Do
 
 1. Find the current session path by reading `.claude-memory/current-session` in the project root
 2. If that file doesn't exist, scan `.claude-memory/sessions/` for today's latest session directory
-3. Read the current state from the session's marker files:
-   - `facts.md` — latest `[!]` entries (what happened)
-   - `context.md` — latest `[*]` entries (why it matters)
-   - `intent.md` — latest `[>]` entries (where we're going)
-4. Assemble a Memory/Context/Intent triplet from the latest entries
+3. Read `state.md` from the session directory and extract:
+   - **Goal** section (## Goal)
+   - **Progress** section (## Progress)
+   - **Findings** section (## Findings)
+4. If state.md is missing or empty, fall back to reading marker files:
+   - `facts.md` — latest `[!]` entries
+   - `context.md` — latest `[*]` entries
+   - `intent.md` — latest `[>]` entries
 5. Append the triplet to `memory.mci` in this format:
 
 ```
 --- [PC] Manual Save @ HH:MM ---
-Memory: <summary of latest facts>
-Context: <summary of latest context>
-Intent: <summary of latest intent/next steps>
+Memory: GOAL: <goal content>
+Context: PROGRESS: <progress content>
+Intent: FINDINGS: <findings content>
 ```
 
 6. Confirm the save with:
 ```
 [+] Session state saved to memory.mci
-    Memory: <brief summary>
-    Context: <brief summary>
-    Intent: <brief summary>
+    Goal: <brief summary>
+    Progress: <X done, Y pending>
+    Findings: <brief summary>
 ```
 
 ## If No Session Exists
@@ -44,6 +47,7 @@ If no active session directory is found:
 
 ## Important
 
+- state.md is the PRIMARY source — always try it first
 - Always include all three lines (Memory, Context, Intent) even if some are sparse
-- Keep each line to 1-2 sentences — the .mci must stay lean
+- Keep each line concise — the .mci must stay lean
 - This is a MANUAL save — the hooks handle automatic saves on compact and session end

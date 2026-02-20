@@ -1,28 +1,42 @@
 <h1 align="center">🧠 claude-memory</h1>
 
 <p align="center">
-  <img src="banner.png" alt="claude-memory — Persistent M/C/I Memory for Claude Code" width="100%">
+  <img src="banner.png" alt="claude-memory — Persistent Memory for Claude Code" width="100%">
 </p>
 
 <p align="center">
-  <strong>Persistent memory for Claude Code sessions using the M/C/I system.</strong><br>
-  <em>Survives compacts, crashes, restarts, and even weekends.</em>
+  <strong>Give Claude Code a memory that survives everything.</strong><br>
+  <em>Compacts, crashes, restarts, weekends — your AI never forgets again.</em>
 </p>
 
 <p align="center">
-  <a href="#-quick-start"><img src="https://img.shields.io/badge/setup-one_command-brightgreen?style=for-the-badge" alt="One Command Setup"></a>
-  <a href="#-quick-start"><img src="https://img.shields.io/badge/plugin-native_install-blueviolet?style=for-the-badge" alt="Plugin Install"></a>
-  <a href="#-how-it-works"><img src="https://img.shields.io/badge/hooks-4_automated-blue?style=for-the-badge" alt="4 Hooks"></a>
-  <a href="#%EF%B8%8F-safety-net--recovery"><img src="https://img.shields.io/badge/fallback-3_tier-orange?style=for-the-badge" alt="3-Tier Fallback"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple?style=for-the-badge" alt="MIT License"></a>
+  <a href="#-install-from-plugin-store"><img src="https://img.shields.io/badge/🔌_Plugin_Store-Install_Now-6B4FBB?style=for-the-badge" alt="Install from Plugin Store"></a>
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="v2.0.0">
   <img src="https://img.shields.io/badge/Claude_Code-v2.1+-black?style=flat-square&logo=anthropic&logoColor=white" alt="Claude Code">
   <img src="https://img.shields.io/badge/platform-Linux_%7C_macOS_%7C_Windows-lightgrey?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/hooks-Node.js_(cross--platform)-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Node.js-cross--platform-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/hooks-4_automated-blue?style=flat-square" alt="4 Hooks">
+  <img src="https://img.shields.io/badge/fallback-3_tier-orange?style=flat-square" alt="3-Tier Fallback">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-purple?style=flat-square" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/battle_tested-100+_sessions-red?style=flat-square" alt="Battle Tested">
 </p>
+
+---
+
+## 🔌 Install from Plugin Store
+
+```bash
+# Add the marketplace
+/plugin marketplace add hlsitechio/claude-memory
+
+# Install the plugin
+/plugin install claude-memory@hlsitechio
+```
+
+**That's it.** Restart Claude Code and memory is active. Claude will never lose context again.
 
 ---
 
@@ -110,41 +124,30 @@ Every piece of state is also backed up as an **M/C/I triplet** in `.mci`:
 
 ## 🚀 Quick Start
 
-### 🔌 Option A: Plugin Install (Recommended)
-
-The fastest way — native Claude Code plugin with automatic hook registration:
-
-```bash
-# Add the marketplace (one-time)
-/plugin marketplace add hlsitechio/claude-memory
-
-# Install the plugin
-/plugin install claude-memory@hlsitechio
-```
-
-That's it! Restart Claude Code and memory is active. On first run, the plugin:
+### What Happens on First Run
 
 1. 📂 Creates `.claude-memory/sessions/` directory
-2. 📄 Creates `state.md` — your living state file
-3. 📄 Copies `IDENTITY.md` and `PREFERENCES.md` templates to your project
+2. 📝 Creates `state.md` — your living state file (Claude's external brain)
+3. 🎭 Copies `IDENTITY.md` and `PREFERENCES.md` templates to your project
 4. 🧠 Injects v2 rules so Claude understands state.md immediately
 5. 💬 Guides Claude through a first-run welcome message
 
-You also get **3 slash commands**:
+### Slash Commands
 
 | Command | What it does |
 |---------|-------------|
-| 🔖 `/claude-memory:save` | Manual checkpoint — save state to `.mci` right now |
-| 🔁 `/claude-memory:recall` | Load and display last saved M/C/I state |
-| 📊 `/claude-memory:status` | Dashboard — state.md health, .mci entries, session info |
+| `/claude-memory:save` | Manual checkpoint — save state to `.mci` right now |
+| `/claude-memory:recall` | Load and display last saved state |
+| `/claude-memory:status` | Dashboard — state.md health, .mci entries, session info |
 
-**Updating:**
+### Updating
+
 ```bash
 /plugin marketplace update hlsitechio
 /plugin update claude-memory@hlsitechio
 ```
 
-### 📦 Option B: Manual Install (git clone)
+### 📦 Alternative: Manual Install (git clone)
 
 For full control or if you want to customize the hooks:
 
@@ -443,6 +446,33 @@ Yes! Legacy marker files (facts.md, context.md, intent.md) are still created and
 ## 📜 License
 
 MIT — see [LICENSE](LICENSE)
+
+---
+
+## 📋 Changelog
+
+### v2.0.0 — state.md Living Document Architecture
+- **Breaking:** Replaced append-only marker files with single `state.md` living document
+- **New:** `state.md` with Goal/Progress/Findings sections — Claude's external brain
+- **New:** Pre-compact snapshots FULL state.md content (not just last line)
+- **New:** 3-tier fallback: state.md → marker files → JSONL transcript
+- **New:** Auto-checkpoint every ~10 prompts snapshots state.md to .mci
+- **New:** state.md health monitoring in prompt-capture hook
+- **Improved:** Post-compact recovery reads state.md directly — no data loss
+- **Improved:** Markers simplified to display formatting + legacy auto-capture
+- **Backward Compatible:** Legacy marker files still created and populated
+
+### v1.3.0 — Marketplace Ready
+- Plugin marketplace support
+- 7-day .mci cascade for session recovery
+- Crash detection and auto-recovery
+- Cross-platform Node.js hooks
+
+### v1.0.0 — Initial Release
+- M/C/I triplet memory system
+- 4 lifecycle hooks (SessionStart, UserPromptSubmit, PreCompact, Stop)
+- Marker-to-file contract
+- Session management with date-based directories
 
 ---
 

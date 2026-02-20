@@ -1,13 +1,13 @@
 ---
 name: recall
 description: |
-  Load and display the most recent M/C/I state from memory.mci.
+  Load and display the most recent session state from state.md and memory.mci.
   Use to recover context after a compact or at session start.
 ---
 
 # Recall Session State
 
-Load and display the most recent Memory/Context/Intent entry from the session's `.mci` file.
+Load and display the current session state, prioritizing state.md over .mci.
 
 ## What To Do
 
@@ -15,10 +15,29 @@ Load and display the most recent Memory/Context/Intent entry from the session's 
    - Read `.claude-memory/current-session` in the project root
    - If not found, scan `.claude-memory/sessions/` for today's latest session
    - If today has no sessions, search up to 7 days back for the most recent session
-2. Read `memory.mci` from the session directory
-3. Parse the LAST entry (entries start with `---`)
+2. **First: Read `state.md`** from the session directory
+   - If state.md exists and has content (>200 bytes), display it as the primary state
+3. **Then: Read `memory.mci`** and parse the LAST entry (entries start with `---`)
 4. Display the recovered state:
 
+### If state.md exists:
+```
+[AC] State recovered from state.md
+
+## Goal
+<goal content>
+
+## Progress
+<progress checklist>
+
+## Findings
+<findings content>
+
+Session: <session path>
+.mci entries: <count>
+```
+
+### If only .mci exists:
 ```
 [AC] Memory recalled from .mci
 
@@ -28,24 +47,19 @@ Intent: <where we're going>
 
 Session: <session path>
 Entries in .mci: <count>
+
+[>] Consider creating state.md with Goal/Progress/Findings sections for better recovery.
 ```
 
-## If No .mci Found
+## If No State Found
 
 Search the cascade (up to 7 days back):
-1. Current session -> `memory.mci`
-2. Previous sessions today -> `memory.mci`
-3. Last 7 days (most recent first) -> `memory.mci`
+1. Current session -> `state.md` then `memory.mci`
+2. Previous sessions today -> `state.md` then `memory.mci`
+3. Last 7 days (most recent first) -> `state.md` then `memory.mci`
 
 If nothing found anywhere:
 ```
-[-] No .mci file found. This is a fresh start.
-[>] Use markers ([!] [*] [>]) during your session to build memory.
-```
-
-## If .mci Is Empty or Invalid
-
-```
-[-] .mci exists but has no valid entries.
-[i] Marker files may have data -- check facts.md, context.md, intent.md
+[-] No state.md or .mci file found. This is a fresh start.
+[>] State.md will be created automatically when hooks are active.
 ```

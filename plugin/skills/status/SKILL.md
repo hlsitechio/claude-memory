@@ -1,7 +1,7 @@
 ---
 name: status
 description: |
-  Display current session status including path, marker counts, .mci validity, and file sizes.
+  Display current session status including state.md health, .mci validity, marker counts, and file sizes.
   Use to check the health of your memory system.
 ---
 
@@ -16,31 +16,36 @@ Display a comprehensive status dashboard for the current claude-memory session.
    - If not found, scan `.claude-memory/sessions/` for today's latest session
 2. For the active session directory, gather:
    - **Session path** (date and session number)
-   - **Marker counts**: number of entries in facts.md, context.md, intent.md, memory.md
+   - **state.md status**: ACTIVE (>200 bytes) / TEMPLATE (<200 bytes) / MISSING
+   - **state.md size**: byte count
+   - **state.md last updated**: from the `> Last updated:` line
    - **.mci status**: valid (has Memory+Context+Intent), partial, or empty
    - **.mci entry count**: number of `---` delimited entries
+   - **Marker counts**: number of entries in facts.md, context.md, intent.md, memory.md
    - **File sizes**: size of each session file
    - **Compact backups**: list any compact-*.md files
    - **Session age**: when the session was created
 3. Display as a formatted dashboard:
 
 ```
-🧠 claude-memory status
+🧠 claude-memory v2.0.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📂 Session: .claude-memory/sessions/YYYY-MM-DD/session-N/
 ⏱️  Started: HH:MM | Age: Xh Ym
 
-📊 Markers:
+📝 state.md: ✅ ACTIVE (X bytes) | ⚠️ TEMPLATE | ❌ MISSING
+   Last updated: HH:MM
+
+🛡️ .mci: ✅ Valid (N entries) | ⚠️ Partial | ❌ Empty
+   Last entry: <type> @ HH:MM
+
+📊 Legacy Markers:
    [!] facts.md     — X entries (Y bytes)
    [*] context.md   — X entries (Y bytes)
    [>] intent.md    — X entries (Y bytes)
    [i] memory.md    — X entries (Y bytes)
 
-🛡️ .mci Status: ✅ Valid (N entries) | ⚠️ Partial | ❌ Empty
-   Last entry: <type> @ HH:MM
-
 💾 Compact Backups: N files
-   - compact-HH:MM:SS.md (X bytes)
 
 📏 Total Session Size: X KB
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -49,7 +54,7 @@ Display a comprehensive status dashboard for the current claude-memory session.
 ## If No Session Exists
 
 ```
-🧠 claude-memory status
+🧠 claude-memory v2.0.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ❌ No active session found.
 [>] Sessions are created automatically when hooks are active.
@@ -62,3 +67,4 @@ Display a comprehensive status dashboard for the current claude-memory session.
 - Count `## ` prefixed lines in .md files for marker entry counts
 - Count `---` lines in .mci for entry counts
 - Use `wc -c` for file sizes
+- state.md status: MISSING (no file), TEMPLATE (<200 bytes), ACTIVE (>200 bytes)
