@@ -45,37 +45,63 @@ Session 1 (continued): Claude forgot everything 🤷
 Session 2: Total amnesia. "What were we working on?" 😶
 ```
 
-### 💡 The Solution: M/C/I (Memory / Context / Intent)
+### 💡 The Solution: state.md (v2)
 
-Every piece of knowledge is stored as an **atomic triplet**:
+**v2** introduces `state.md` — a **living document** that Claude actively maintains:
+
+```markdown
+# Session State
+> Last updated: 14:30
+
+## Goal
+Build the user authentication system with JWT tokens
+
+## Progress
+- [x] Set up database schema
+- [x] Implement login endpoint
+- [ ] Add token refresh logic
+- [ ] Write integration tests
+
+## Findings
+- Auth middleware needs to handle expired tokens gracefully
+- Rate limiting should be per-user, not per-IP
+```
+
+**Why this works:** state.md lives on **disk**, not in context. When auto-compact fires, state.md is untouched. Claude reads it back and picks up exactly where it left off.
+
+### 📦 M/C/I Triplets (Safety Net)
+
+Every piece of state is also backed up as an **M/C/I triplet** in `.mci`:
 
 | Component | What it captures |
 |-----------|-----------------|
-| 📝 **Memory** | What happened — facts, data, discoveries |
-| 🔗 **Context** | Why it matters — meaning, relationships, significance |
-| 🎯 **Intent** | Where we're going — next steps, direction, goals |
+| 📝 **Memory** | Goal — what you're working on |
+| 🔗 **Context** | Progress — what's done, what's next |
+| 🎯 **Intent** | Findings — discoveries and important data |
 
 ### ⚡ Four hooks automate the lifecycle:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ 🟢 SessionStart                                         │
-│    → Creates/resumes session directory                   │
+│    → Creates/resumes session + state.md template         │
 │    → Loads last .mci (cascades up to 7 days back)        │
 │    → Detects crashes & recovers automatically            │
 │    → First-run: copies templates, onboards Claude        │
 ├─────────────────────────────────────────────────────────┤
 │ 🔵 UserPromptSubmit (every prompt)                       │
-│    → Captures markers from Claude's last response        │
-│    → Auto-checkpoints every ~10 prompts (crash safety)   │
+│    → Checks state.md health (exists? updated?)           │
+│    → Auto-checkpoints state.md every ~10 prompts         │
 │    → Estimates context usage & warns before compact ⚠️   │
+│    → Captures legacy markers as backup                   │
 ├─────────────────────────────────────────────────────────┤
 │ 🟠 PreCompact (before auto-compact)                      │
-│    → 3-tier fallback: .mci → markers → JSONL emergency  │
+│    → Snapshots FULL state.md content to .mci             │
+│    → 3-tier fallback: state.md → markers → JSONL         │
 │    → Creates conversation backup 💾                      │
 ├─────────────────────────────────────────────────────────┤
 │ 🔴 Stop (session end)                                    │
-│    → Ensures valid .mci exists for next session          │
+│    → Snapshots state.md to .mci                          │
 │    → Generates session summary 📊                        │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -99,9 +125,10 @@ The fastest way — native Claude Code plugin with automatic hook registration:
 That's it! Restart Claude Code and memory is active. On first run, the plugin:
 
 1. 📂 Creates `.claude-memory/sessions/` directory
-2. 📄 Copies `IDENTITY.md` and `PREFERENCES.md` templates to your project
-3. 🧠 Injects M/C/I rules so Claude understands the system immediately
-4. 💬 Guides Claude through a first-run welcome message
+2. 📄 Creates `state.md` — your living state file
+3. 📄 Copies `IDENTITY.md` and `PREFERENCES.md` templates to your project
+4. 🧠 Injects v2 rules so Claude understands state.md immediately
+5. 💬 Guides Claude through a first-run welcome message
 
 You also get **3 slash commands**:
 
@@ -109,7 +136,7 @@ You also get **3 slash commands**:
 |---------|-------------|
 | 🔖 `/claude-memory:save` | Manual checkpoint — save state to `.mci` right now |
 | 🔁 `/claude-memory:recall` | Load and display last saved M/C/I state |
-| 📊 `/claude-memory:status` | Dashboard — marker counts, .mci health, session info |
+| 📊 `/claude-memory:status` | Dashboard — state.md health, .mci entries, session info |
 
 **Updating:**
 ```bash
@@ -129,7 +156,7 @@ cd claude-memory
 
 The installer will:
 1. 📂 Copy 4 hook scripts to your project's `.claude/hooks/`
-2. 📄 Install `CLAUDE.md` with M/C/I rules
+2. 📄 Install `CLAUDE.md` with v2 rules
 3. ⚙️ Generate `.claude/settings.local.json` with hook configuration
 4. 🗂️ Create the `.claude-memory/sessions/` directory
 5. 🎭 Optionally install identity templates (`IDENTITY.md`, `PREFERENCES.md`)
@@ -146,132 +173,116 @@ The installer will:
 
 ## 🛡️ Safety Net & Recovery
 
+### 📝 state.md — Primary Recovery
+
+state.md is your **primary recovery mechanism**. It lives on disk, completely outside the context window. When compact fires:
+
+1. Pre-compact hook snapshots state.md → .mci (automatic)
+2. Anthropic's black box compact compresses the conversation
+3. SessionStart fires, tells Claude: "Read state.md"
+4. Claude reads Goal/Progress/Findings and resumes work
+
+**No data loss. No "what were we doing?" No amnesia.**
+
 ### 💥 Crash Recovery
 
-If the terminal crashes, gets killed, or is closed abruptly — the **Stop hook never fires**. claude-memory handles this:
+If the terminal crashes (Stop hook never fires):
 
-1. **On next startup**, SessionStart detects the crash (no end marker in previous session)
-2. **Loads the .mci** from the crashed session (if it exists)
-3. **Loads marker files** (facts.md, context.md, intent.md) for richer context
-4. **Injects a CRASH RECOVERY block** telling Claude exactly what happened
-5. Claude resumes where you left off — **no questions asked**
+1. **On next startup**, SessionStart detects the crash (no end marker)
+2. **Loads the .mci** from the crashed session
+3. **state.md is still on disk** — full state preserved
+4. **Injects a CRASH RECOVERY block** telling Claude what happened
+5. Claude resumes — **no questions asked**
 
 ### ⏱️ Auto-Checkpoint (Crash Insurance)
 
-Every **~10 prompts**, the UserPromptSubmit hook auto-saves a checkpoint to `.mci`. This means even if Claude never manually wrote `[PC]` and the terminal crashes, there's recent state saved.
+Every **~10 prompts**, the hook auto-snapshots state.md to `.mci`. Even if Claude never manually saved and the terminal crashes, there's recent state.
 
 ### 📅 7-Day .mci Cascade
 
 When loading memory, SessionStart searches:
-
 ```
 current session .mci
   → previous session (timed out)
     → earlier sessions today
-      → yesterday
-        → 2 days ago → ... → up to 7 days back
+      → yesterday → ... → up to 7 days back
 ```
-
-Come back after a long weekend? Your context is still there.
 
 ### 🥇🥈🥉 3-Tier Fallback (PreCompact)
 
 | Tier | Source | When |
 |------|--------|------|
-| 🥇 **Best** | Claude saved `.mci` via `[PC]` | Claude was diligent |
-| 🥈 **Good** | Assembled from marker files (`[!]` `[*]` `[>]`) | Claude used markers but forgot `[PC]` |
+| 🥇 **Best** | state.md snapshot | state.md exists and has content (>200 bytes) |
+| 🥈 **Good** | Assembled from marker files | Legacy markers captured, no state.md |
 | 🥉 **Emergency** | Extracted from JSONL transcript | Nothing else available |
-
-**Result:** Even in the worst case, the next session loads *something* rather than starting blank.
 
 ---
 
 ## 🏷️ Markers
 
-Markers are how Claude saves information during a session. When Claude types a marker in its response, it **must** also write it to the corresponding file.
+In v2, markers are primarily **display formatting**. The real memory lives in state.md.
 
-### 💾 Save Markers (write to file on use)
+### 📝 state.md Actions (v2 primary)
 
-| Marker | File | Purpose |
-|--------|------|---------|
-| 🔴 `[!]` | `facts.md` | Critical discoveries, key findings |
-| 🟡 `[*]` | `context.md` | Why something matters, significance |
-| 🟢 `[>]` | `intent.md` | Next steps, direction, goals |
-| 🔵 `[i]` | `memory.md` | Observations, environment info |
+| Marker | Display | state.md Action |
+|--------|---------|----------------|
+| ✅ `[+]` | Success | (display only) |
+| ❌ `[-]` | Failed | (display only) |
+| 🔴 `[!]` | Critical | → Edit Findings section |
+| 🟢 `[>]` | Next step | → Edit Progress section |
+| 🟡 `[*]` | Context | → Edit Goal section |
+| 🔵 `[i]` | Info | → Append to memory.md |
 
-### 🔄 Lifecycle Markers
+### 🔄 Legacy Capture (automatic backup)
 
-| Marker | Action |
-|--------|--------|
-| 💾 `[PC]` | Pre-compact save — writes M/C/I triplet to `memory.mci` |
-| 🔁 `[AC]` | Post-compact recovery — reads `.mci` to restore state |
-
-### 🎨 Display-Only Markers (no file write)
-
-| Marker | Meaning |
-|--------|---------|
-| ✅ `[+]` | Success / found |
-| ❌ `[-]` | Failed / not found |
+The prompt-capture hook still watches for markers in Claude's responses and auto-saves them to facts.md/context.md/intent.md. This is backward compatibility — state.md is primary.
 
 ### 📌 Example
 
-When Claude writes this in a response:
+When Claude writes:
 ```
 [!] Found that the API rate limit can be bypassed by rotating User-Agent headers
 ```
 
-It must also run:
-```bash
-echo '## 14:30 - Found that the API rate limit can be bypassed by rotating User-Agent headers' >> SESSION_PATH/facts.md
-```
-
-> 💡 The `prompt-capture` hook also captures markers as a backup, but Claude should save them directly for reliability.
+**v2 behavior:** Claude should also Edit the Findings section of state.md.
+**Legacy backup:** The hook auto-captures it to facts.md.
 
 ---
 
 ## 📦 The .mci File
 
-The `.mci` file is the **compact recovery lifeline** — the single most important file in the system:
+The `.mci` file is auto-generated by hooks as a **safety net**:
 
 ```
---- Session 3 ---
-Memory: Built the user filtering API. Added 3 columns to users table. Found auth bypass.
-Context: Preparing for v2.1 release. Auth bypass is a security issue blocking release.
-Intent: Fix auth middleware, write tests, then merge the filtering PR.
+--- [PC] state.md Snapshot @ 14:30:00 ---
+Memory: GOAL: Build the user filtering API with pagination support
+Context: PROGRESS: - [x] Database schema designed\n- [x] GET endpoint working\n- [ ] Add filters
+Intent: FINDINGS: Auth bypass found in middleware — blocks release until fixed
 ```
 
-> 🛡️ When auto-compact fires, the `.mci` file **survives** because it's on disk, not in the context window. The next `SessionStart` hook loads it back, and Claude picks up exactly where it left off.
+> 🛡️ In v2, you rarely need to think about .mci. The hooks handle it automatically by snapshotting state.md.
 
 ---
 
 ## 📁 Session Structure
 
-Sessions are organized by date:
-
 ```
 .claude-memory/
+├── current-session          ← pointer to active session
 └── 📂 sessions/
-    └── 📂 2026-02-18/
+    └── 📂 2026-02-20/
         ├── 📂 session-1/
-        │   ├── 📄 facts.md           ← 🔴 [!] entries
-        │   ├── 📄 context.md         ← 🟡 [*] entries
-        │   ├── 📄 intent.md          ← 🟢 [>] entries
+        │   ├── 📝 state.md           ← YOUR EXTERNAL BRAIN (v2 primary)
+        │   ├── 📄 facts.md           ← 🔴 [!] legacy backup
+        │   ├── 📄 context.md         ← 🟡 [*] legacy backup
+        │   ├── 📄 intent.md          ← 🟢 [>] legacy backup
         │   ├── 📄 memory.md          ← 🔵 [i] entries + session log
-        │   ├── 🛡️ memory.mci         ← compact recovery lifeline
-        │   ├── 💾 compact-12:17:29.md ← conversation backup
+        │   ├── 🛡️ memory.mci         ← auto-generated safety net
+        │   ├── 💾 compact-*.md       ← conversation backups
         │   └── 📊 session-summary.md ← tool stats, files modified
         └── 📂 session-2/
             └── ...
 ```
-
-| Feature | Detail |
-|---------|--------|
-| ♻️ Auto-resume | Sessions active within last 4 hours are resumed |
-| 🆕 New session | Created automatically after 4-hour gap |
-| 🔍 MCI cascade | Searches: current → previous today → up to 7 days back |
-| 💥 Crash detection | Detects if previous session ended without Stop hook |
-| ⚡ Auto-checkpoint | Saves .mci every ~10 prompts as crash insurance |
-| 🎉 First-run setup | Copies templates, onboards Claude on first install |
 
 ---
 
@@ -347,8 +358,6 @@ For git-clone installs, the installer generates `.claude/settings.local.json`:
 
 ### 🎛️ Tunable Constants
 
-**Plugin** (in `plugin/scripts/*.js`):
-
 | Constant | Default | Purpose |
 |----------|---------|---------|
 | `RESUME_TIMEOUT` | `14400` (4 hours) | Seconds before creating a new session |
@@ -366,16 +375,22 @@ For git-clone installs, the installer generates `.claude/settings.local.json`:
 | 📝 `IDENTITY.md` | Personality and principles (system prompt addition) |
 | ⚡ `PREFERENCES.md` | Output style and communication preferences |
 
-> On plugin first-run, templates are automatically copied to your project root. Edit them to customize Claude's personality and communication style.
-
 ---
 
 ## ❓ FAQ
 
 <details>
-<summary>🤖 Does this work with Claude Code subagents (Task tool)?</summary>
+<summary>🆕 What changed in v2?</summary>
 
-The hooks run on the main session. Subagents don't trigger hooks directly, but the main session's markers capture the overall flow.
+v1 used 4 append-only marker files (facts.md, context.md, intent.md, memory.md). The pre-compact hook only grabbed the LAST line from each file — losing everything else. Marker compliance was 3 entries in 45 sessions because the contract was too complex.
+
+v2 replaces this with a single `state.md` file that Claude actively maintains using the Edit tool. Pre-compact snapshots the FULL content. No data loss. No complex marker contracts. Just keep one file current.
+</details>
+
+<details>
+<summary>🤖 Does this work with Claude Code subagents?</summary>
+
+The hooks run on the main session. Subagents don't trigger hooks directly, but the main session's state.md captures the overall flow.
 </details>
 
 <details>
@@ -385,39 +400,27 @@ SessionStart injects ~500-800 tokens (identity + .mci + rules). This is a small 
 </details>
 
 <details>
-<summary>⏱️ What if hooks are slow?</summary>
-
-`prompt-capture.js` has a 5-second timeout and runs in <2 seconds. It only reads the last 50 lines of the JSONL for speed.
-</details>
-
-<details>
 <summary>💥 What if my terminal crashes?</summary>
 
-On next startup, SessionStart detects the crash (missing Stop marker), loads the last .mci + marker files, and injects a CRASH RECOVERY block. Auto-checkpoints every ~10 prompts ensure there's always recent state saved.
+state.md is on disk — it survives crashes. On next startup, SessionStart detects the crash, loads the .mci + state.md, and injects a CRASH RECOVERY block. Auto-checkpoints every ~10 prompts ensure .mci is also recent.
 </details>
 
 <details>
 <summary>📅 What if I come back after the weekend?</summary>
 
-The .mci cascade searches up to 7 days back. Your context from Friday is still there on Monday.
+The .mci cascade searches up to 7 days back. state.md from your last session is still on disk too.
 </details>
 
 <details>
 <summary>🪟 Does this work on Windows?</summary>
 
-Yes! Plugin hooks use Node.js (bundled with Claude Code) for full cross-platform support. No bash required.
+Yes! Plugin hooks use Node.js (bundled with Claude Code) for full cross-platform support.
 </details>
 
 <details>
-<summary>📄 Can I use this with an existing CLAUDE.md?</summary>
+<summary>🔄 Is v2 backward compatible?</summary>
 
-Yes! The plugin's CLAUDE.md is loaded alongside your existing one. For manual install, the installer can append M/C/I rules to your existing `CLAUDE.md`.
-</details>
-
-<details>
-<summary>🔒 What about `.claude-memory/` in git?</summary>
-
-It's in `.gitignore` by default. Session data is personal and shouldn't be committed.
+Yes! Legacy marker files (facts.md, context.md, intent.md) are still created and auto-populated. The fallback chain checks state.md first, then marker files, then JSONL. Users upgrading from v1 lose nothing.
 </details>
 
 ---
@@ -428,12 +431,12 @@ It's in `.gitignore` by default. Session data is personal and shouldn't be commi
 
 | Lesson | Detail |
 |--------|--------|
-| 🎯 **Markers = commands** | Early versions treated markers as decorative — entries were never saved. Enforcement changed everything. |
-| 🛡️ **Multi-layer fallbacks** | Claude forgets. Compacts fire unexpectedly. Terminals crash. Every layer catches what the previous one missed. |
-| 🪶 **Lightweight startup** | Loading too much context wastes the context window. The "drawer model" — load on demand — maximizes useful space. |
-| 💎 **The .mci is sacred** | It's the single most important file in the system. Everything else is backup. |
-| 🔄 **Node.js over bash** | Bash hooks failed on Windows and had variable expansion issues. Node.js is cross-platform and bundled with Claude Code. |
-| ⚡ **Auto-checkpoint** | Relying on Claude to save `[PC]` was unreliable. Auto-checkpointing every ~10 prompts is the crash safety net. |
+| 📝 **state.md > markers** | v1's marker-to-file contract failed 97% of the time. v2's "just maintain one file" works naturally. |
+| 🛡️ **Multi-layer fallbacks** | state.md → marker files → JSONL. Every layer catches what the previous one missed. |
+| 🪶 **Lightweight startup** | Loading too much wastes context. The "drawer model" — load on demand — maximizes useful space. |
+| 💎 **state.md is sacred** | It's the single most important file. Everything else is backup. |
+| 🔄 **Node.js over bash** | Bash hooks failed on Windows. Node.js is cross-platform and bundled with Claude Code. |
+| ⚡ **Auto-checkpoint** | Relying on Claude to save was unreliable. Auto-snapshotting state.md every ~10 prompts is the safety net. |
 
 ---
 

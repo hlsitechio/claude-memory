@@ -1,7 +1,9 @@
 #!/bin/bash
 # ============================================================================
-# PRE-COMPACT - Safety net before auto-compact fires
-# 3-tier fallback: .mci valid → assemble from markers → emergency from JSONL
+# MCI v2 PRE-COMPACT — Snapshots FULL state.md into .mci
+# PRIMARY: Read state.md content → write to .mci
+# FALLBACK 1: Assemble from marker files (backward compat)
+# FALLBACK 2: Extract from JSONL (emergency)
 # ============================================================================
 
 MEMORY_BASE="${CLAUDE_PROJECT_DIR:-.}/.claude-memory"
@@ -26,6 +28,7 @@ if [ -z "$SESSION_PATH" ]; then
 fi
 
 MCI_FILE="$SESSION_PATH/memory.mci"
+STATE_FILE="$SESSION_PATH/state.md"
 COMPACT_FILE="$SESSION_PATH/compact-$TIMESTAMP.md"
 
 # Find JSONL
@@ -34,106 +37,73 @@ if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
     JSONL_FILE="$TRANSCRIPT"
 else
     CLAUDE_PROJECTS="$HOME/.claude/projects"
-    if [ -d "$CLAUDE_PROJECTS" ]; then
-        JSONL_FILE=$(find "$CLAUDE_PROJECTS" -name "*.jsonl" -newer "$SESSION_PATH/memory.md" 2>/dev/null | head -1)
-    fi
+    [ -d "$CLAUDE_PROJECTS" ] && JSONL_FILE=$(find "$CLAUDE_PROJECTS" -name "*.jsonl" -newer "$SESSION_PATH/memory.md" 2>/dev/null | head -1)
 fi
 
 # ============================================================================
-# STEP 1: CHECK IF .MCI IS ALREADY VALID
+# STEP 1: SNAPSHOT state.md INTO .mci (PRIMARY — v2 approach)
 # ============================================================================
 
-MCI_VALID="false"
-if [ -f "$MCI_FILE" ]; then
-    HAS_MEMORY=$(grep -c "^Memory:" "$MCI_FILE" 2>/dev/null || echo 0)
-    HAS_CONTEXT=$(grep -c "^Context:" "$MCI_FILE" 2>/dev/null || echo 0)
-    HAS_INTENT=$(grep -c "^Intent:" "$MCI_FILE" 2>/dev/null || echo 0)
+MCI_WRITTEN="false"
 
-    if [ "$HAS_MEMORY" -gt 0 ] && [ "$HAS_CONTEXT" -gt 0 ] && [ "$HAS_INTENT" -gt 0 ]; then
-        MCI_VALID="true"
-    fi
-fi
+if [ -f "$STATE_FILE" ]; then
+    STATE_SIZE=$(wc -c < "$STATE_FILE" 2>/dev/null || echo 0)
+    if [ "$STATE_SIZE" -gt 200 ]; then
+        GOAL=$(sed -n '/^## Goal/,/^## /{ /^## Goal/d; /^## /d; p; }' "$STATE_FILE" 2>/dev/null | head -c 1500 | sed '/^$/d' | head -20)
+        PROGRESS=$(sed -n '/^## Progress/,/^## /{ /^## Progress/d; /^## /d; p; }' "$STATE_FILE" 2>/dev/null | head -c 2000 | head -30)
+        FINDINGS=$(sed -n '/^## Findings/,/^## /{ /^## Findings/d; /^## /d; p; }' "$STATE_FILE" 2>/dev/null | head -c 2000 | head -30)
 
-# ============================================================================
-# STEP 2: ASSEMBLE FROM MARKER FILES (primary fallback)
-# ============================================================================
-
-ASSEMBLED="false"
-
-if [ "$MCI_VALID" = "false" ]; then
-    LATEST_FACT=""
-    LATEST_CONTEXT=""
-    LATEST_INTENT=""
-
-    [ -f "$SESSION_PATH/facts.md" ] && LATEST_FACT=$(grep "^## " "$SESSION_PATH/facts.md" 2>/dev/null | tail -1 | sed 's/^## [0-9:]* - //')
-    [ -f "$SESSION_PATH/context.md" ] && LATEST_CONTEXT=$(grep "^## " "$SESSION_PATH/context.md" 2>/dev/null | tail -1 | sed 's/^## [0-9:]* - //')
-    [ -f "$SESSION_PATH/intent.md" ] && LATEST_INTENT=$(grep "^## " "$SESSION_PATH/intent.md" 2>/dev/null | tail -1 | sed 's/^## [0-9:]* - //')
-
-    if [ -n "$LATEST_FACT" ] || [ -n "$LATEST_CONTEXT" ] || [ -n "$LATEST_INTENT" ]; then
-        ASSEMBLED="true"
         cat >> "$MCI_FILE" << MCIEOF
 
---- [PC] Auto-Assembled from marker files @ $TIMESTAMP ---
-Memory: ${LATEST_FACT:-No [!] markers captured this session}
-Context: ${LATEST_CONTEXT:-No [*] markers captured this session}
-Intent: ${LATEST_INTENT:-No [>] markers captured this session}
+--- [PC] state.md Snapshot @ $TIMESTAMP ---
+Memory: GOAL: ${GOAL:-No goal set}
+Context: PROGRESS: ${PROGRESS:-No progress tracked}
+Intent: FINDINGS: ${FINDINGS:-No findings yet}
 MCIEOF
+        MCI_WRITTEN="true"
     fi
 fi
 
 # ============================================================================
-# STEP 3: EMERGENCY FALLBACK FROM JSONL (tertiary)
+# STEP 2: FALLBACK — Assemble from marker files (backward compat)
 # ============================================================================
 
-if [ "$MCI_VALID" = "false" ] && [ "$ASSEMBLED" = "false" ] && [ -f "$JSONL_FILE" ]; then
-    # Extract markers from Claude's responses
-    MARKER_LINES=$(jq -r '
-        select(.type == "assistant") |
-        .message.content // [] |
-        if type == "array" then .[] else . end |
-        select(.type == "text") | .text // empty
-    ' "$JSONL_FILE" 2>/dev/null | grep -E '^\[!\]|^\[\*\]|^\[>\]' | tail -20)
+if [ "$MCI_WRITTEN" = "false" ]; then
+    LATEST_FACT="" LATEST_CONTEXT="" LATEST_INTENT=""
+    [ -f "$SESSION_PATH/facts.md" ] && LATEST_FACT=$(grep "^## " "$SESSION_PATH/facts.md" 2>/dev/null | tail -5 | sed 's/^## [0-9:]* - //' | tr '\n' '; ')
+    [ -f "$SESSION_PATH/context.md" ] && LATEST_CONTEXT=$(grep "^## " "$SESSION_PATH/context.md" 2>/dev/null | tail -5 | sed 's/^## [0-9:]* - //' | tr '\n' '; ')
+    [ -f "$SESSION_PATH/intent.md" ] && LATEST_INTENT=$(grep "^## " "$SESSION_PATH/intent.md" 2>/dev/null | tail -5 | sed 's/^## [0-9:]* - //' | tr '\n' '; ')
 
-    # Extract last user messages
-    LAST_USER=$(jq -r '
-        select(.type == "user") |
-        .message.content // "" |
-        if type == "array" then
-            [.[] | select(.type == "text") | .text // empty] | join(" ")
-        elif type == "string" then .
-        else empty end
-    ' "$JSONL_FILE" 2>/dev/null | grep -v '^$' | tail -5 | head -c 500)
+    if [ -n "$LATEST_FACT" ] || [ -n "$LATEST_CONTEXT" ] || [ -n "$LATEST_INTENT" ]; then
+        cat >> "$MCI_FILE" << MCIEOF
 
-    # Tool usage summary
-    TOOLS_USED=$(jq -r '
-        select(.type == "assistant") |
-        .message.content // [] |
-        if type == "array" then .[] else empty end |
-        select(.type == "tool_use") | .name
-    ' "$JSONL_FILE" 2>/dev/null | sort | uniq -c | sort -rn | head -5 | tr '\n' ', ')
+--- [PC] Assembled from marker files @ $TIMESTAMP ---
+Memory: ${LATEST_FACT:-No [!] markers captured}
+Context: ${LATEST_CONTEXT:-No [*] markers captured}
+Intent: ${LATEST_INTENT:-No [>] markers captured}
+MCIEOF
+        MCI_WRITTEN="true"
+    fi
+fi
 
-    # Files touched
-    FILES_TOUCHED=$(jq -r '
-        select(.type == "assistant") |
-        .message.content // [] |
-        if type == "array" then .[] else empty end |
-        select(.type == "tool_use" and (.name == "Write" or .name == "Edit")) |
-        .input.file_path // empty
-    ' "$JSONL_FILE" 2>/dev/null | sort -u | tail -10 | tr '\n' ', ')
+# ============================================================================
+# STEP 3: EMERGENCY FROM JSONL
+# ============================================================================
 
-    # Build emergency entry
-    E_MEMORY="[EMERGENCY] Tools: ${TOOLS_USED:-none}. Files: ${FILES_TOUCHED:-none}"
+if [ "$MCI_WRITTEN" = "false" ] && [ -f "$JSONL_FILE" ]; then
+    MARKER_LINES=$(jq -r 'select(.type == "assistant") | .message.content // [] | if type == "array" then .[] else . end | select(.type == "text") | .text // empty' "$JSONL_FILE" 2>/dev/null | grep -E '^\[!\]|^\[\*\]|^\[>\]' | tail -20)
+    LAST_USER=$(jq -r 'select(.type == "user") | .message.content // "" | if type == "array" then [.[] | select(.type == "text") | .text // empty] | join(" ") elif type == "string" then . else empty end' "$JSONL_FILE" 2>/dev/null | grep -v '^$' | tail -5 | head -c 500)
+    TOOLS_USED=$(jq -r 'select(.type == "assistant") | .message.content // [] | if type == "array" then .[] else empty end | select(.type == "tool_use") | .name' "$JSONL_FILE" 2>/dev/null | sort | uniq -c | sort -rn | head -5 | tr '\n' ', ')
+
+    E_MEMORY="[EMERGENCY] Tools: ${TOOLS_USED:-none}"
     E_CONTEXT="User discussing: $(echo "$LAST_USER" | head -c 200)"
-    E_INTENT="Session interrupted by compact. Review compact-$TIMESTAMP.md for raw conversation."
+    E_INTENT="Compact interrupted. Check compact file for conversation."
 
-    # Override with marker data if found
     if [ -n "$MARKER_LINES" ]; then
         M=$(echo "$MARKER_LINES" | grep '^\[!\]' | tail -1 | sed 's/^\[!\] *//')
         C=$(echo "$MARKER_LINES" | grep '^\[\*\]' | tail -1 | sed 's/^\[\*\] *//')
         I=$(echo "$MARKER_LINES" | grep '^\[>\]' | tail -1 | sed 's/^\[>\] *//')
-        [ -n "$M" ] && E_MEMORY="$M"
-        [ -n "$C" ] && E_CONTEXT="$C"
-        [ -n "$I" ] && E_INTENT="$I"
+        [ -n "$M" ] && E_MEMORY="$M"; [ -n "$C" ] && E_CONTEXT="$C"; [ -n "$I" ] && E_INTENT="$I"
     fi
 
     cat >> "$MCI_FILE" << MCIEOF
@@ -146,29 +116,14 @@ MCIEOF
 fi
 
 # ============================================================================
-# STEP 4: CREATE COMPACT BACKUP
+# STEP 4: COMPACT BACKUP
 # ============================================================================
 
 if [ -f "$JSONL_FILE" ]; then
     CONVO=$(tail -500 "$JSONL_FILE" 2>/dev/null | jq -r '
         select(.type == "user" or .type == "assistant") |
-        if .type == "user" then
-            "## USER:\n" + (
-                if .message.content | type == "string" then .message.content
-                elif .message.content | type == "array" then
-                    [.message.content[] | select(.type == "text") | .text // empty] | join("\n")
-                else "..." end
-            )
-        elif .type == "assistant" then
-            "## CLAUDE:\n" + (
-                if .message.content | type == "array" then
-                    [.message.content[] |
-                        if .type == "text" and ((.text // "") | length > 0) then .text
-                        elif .type == "tool_use" then "[tool: " + .name + "]"
-                        else empty end
-                    ] | join("\n")
-                else "..." end
-            )
+        if .type == "user" then "## USER:\n" + (if .message.content | type == "string" then .message.content elif .message.content | type == "array" then [.message.content[] | select(.type == "text") | .text // empty] | join("\n") else "..." end)
+        elif .type == "assistant" then "## CLAUDE:\n" + (if .message.content | type == "array" then [.message.content[] | if .type == "text" and ((.text // "") | length > 0) then .text elif .type == "tool_use" then "[tool: " + .name + "]" else empty end] | join("\n") else "..." end)
         else empty end
     ' 2>/dev/null | tail -c 6000)
 
@@ -176,7 +131,8 @@ if [ -f "$JSONL_FILE" ]; then
 
     cat > "$COMPACT_FILE" << EOF
 # Pre-Compact Backup - $TIMESTAMP
-## MCI Status: $([ "$MCI_VALID" = "true" ] && echo "VALID" || echo "AUTO-GENERATED")
+## MCI: $([ "$MCI_WRITTEN" = "true" ] && echo "state.md snapshot" || echo "EMERGENCY")
+## state.md: $([ -f "$STATE_FILE" ] && echo "EXISTS" || echo "MISSING")
 ## Messages: ~$MSG_COUNT
 
 ## Recent Conversation
@@ -184,15 +140,11 @@ $CONVO
 EOF
 fi
 
-# ============================================================================
-# STEP 5: SET COMPACT-PENDING MARKER
-# ============================================================================
+# Set compact-pending marker
+echo "$TIMESTAMP|$MCI_FILE|$([ "$MCI_WRITTEN" = "true" ] && echo "state-snapshot" || echo "emergency")" > "$MEMORY_BASE/compact-pending"
 
-echo "$TIMESTAMP|$MCI_FILE|$([ "$MCI_VALID" = "true" ] && echo "valid" || echo "emergency")" > "$MEMORY_BASE/compact-pending"
-
-# Update session log
 echo "" >> "$SESSION_PATH/memory.md"
-echo "## $TIMESTAMP - PRE-COMPACT [MCI: $([ "$MCI_VALID" = "true" ] && echo "SAVED" || echo "EMERGENCY")]" >> "$SESSION_PATH/memory.md"
+echo "## $TIMESTAMP - PRE-COMPACT [state.md: $([ -f "$STATE_FILE" ] && echo "SNAPSHOT" || echo "MISSING")]" >> "$SESSION_PATH/memory.md"
 
-echo "Pre-compact: MCI=$([ "$MCI_VALID" = "true" ] && echo "valid" || echo "emergency")"
+echo "Pre-compact: state.md=$([ -f "$STATE_FILE" ] && echo "snapshot" || echo "missing")"
 exit 0

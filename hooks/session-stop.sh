@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================================
-# SESSION STOP - Ensures session ends with valid .mci for next pickup
+# MCI v2 SESSION STOP — state.md snapshot + session summary
+# Ensures session ends with valid .mci (snapshots state.md if available)
 # Generates session-summary.md with tool stats and file list
 # ============================================================================
 
@@ -23,6 +24,7 @@ fi
 [ -z "$SESSION_PATH" ] && { echo '{"suppressOutput": true}'; exit 0; }
 
 MCI_FILE="$SESSION_PATH/memory.mci"
+STATE_FILE="$SESSION_PATH/state.md"
 
 # Find JSONL
 JSONL_FILE=""
@@ -34,25 +36,36 @@ else
         JSONL_FILE=$(find "$CLAUDE_PROJECTS" -name "*.jsonl" -newer "$SESSION_PATH/memory.md" 2>/dev/null | head -1)
     fi
 fi
-[ -z "$JSONL_FILE" ] || [ ! -f "$JSONL_FILE" ] && { echo '{"suppressOutput": true}'; exit 0; }
 
 # ============================================================================
-# STEP 1: VALIDATE .MCI
+# STEP 1: SNAPSHOT state.md TO .mci (v2 — primary approach)
 # ============================================================================
 
-MCI_COMPLETE="false"
-if [ -f "$MCI_FILE" ]; then
-    HAS_M=$(grep -c "^Memory:" "$MCI_FILE" 2>/dev/null || echo 0)
-    HAS_C=$(grep -c "^Context:" "$MCI_FILE" 2>/dev/null || echo 0)
-    HAS_I=$(grep -c "^Intent:" "$MCI_FILE" 2>/dev/null || echo 0)
-    [ "$HAS_M" -gt 0 ] && [ "$HAS_C" -gt 0 ] && [ "$HAS_I" -gt 0 ] && MCI_COMPLETE="true"
+MCI_WRITTEN="false"
+
+if [ -f "$STATE_FILE" ]; then
+    STATE_SIZE=$(wc -c < "$STATE_FILE" 2>/dev/null || echo 0)
+    if [ "$STATE_SIZE" -gt 200 ]; then
+        GOAL=$(sed -n '/^## Goal/,/^## /{ /^## Goal/d; /^## /d; p; }' "$STATE_FILE" 2>/dev/null | head -c 1500 | sed '/^$/d' | head -20)
+        PROGRESS=$(sed -n '/^## Progress/,/^## /{ /^## Progress/d; /^## /d; p; }' "$STATE_FILE" 2>/dev/null | head -c 2000 | head -30)
+        FINDINGS=$(sed -n '/^## Findings/,/^## /{ /^## Findings/d; /^## /d; p; }' "$STATE_FILE" 2>/dev/null | head -c 2000 | head -30)
+
+        cat >> "$MCI_FILE" << MCIEOF
+
+--- [STOP] state.md Snapshot @ $TIMESTAMP ---
+Memory: GOAL: ${GOAL:-No goal set}
+Context: PROGRESS: ${PROGRESS:-No progress tracked}
+Intent: FINDINGS: ${FINDINGS:-No findings yet}
+MCIEOF
+        MCI_WRITTEN="true"
+    fi
 fi
 
 # ============================================================================
-# STEP 2: AUTO-GENERATE .MCI IF INCOMPLETE
+# STEP 2: FALLBACK — Auto-generate from JSONL if no state.md
 # ============================================================================
 
-if [ "$MCI_COMPLETE" = "false" ]; then
+if [ "$MCI_WRITTEN" = "false" ] && [ -f "$JSONL_FILE" ]; then
     TOOLS_USED=$(jq -r '
         select(.type == "assistant") |
         .message.content // [] |
@@ -77,7 +90,6 @@ if [ "$MCI_COMPLETE" = "false" ]; then
         else empty end
     ' "$JSONL_FILE" 2>/dev/null | grep -v '^$' | tail -3 | head -c 300)
 
-    # Try to find markers in Claude's output
     MARKER_MEMORY=$(jq -r '
         select(.type == "assistant") |
         .message.content // [] |
@@ -109,37 +121,35 @@ fi
 # STEP 3: GENERATE SESSION SUMMARY
 # ============================================================================
 
-USER_COUNT=$(jq -r 'select(.type == "user")' "$JSONL_FILE" 2>/dev/null | wc -l)
+if [ -f "$JSONL_FILE" ]; then
+    USER_COUNT=$(jq -r 'select(.type == "user")' "$JSONL_FILE" 2>/dev/null | wc -l)
+    TOOL_STATS=$(jq -r '
+        select(.type == "assistant") |
+        .message.content // [] |
+        if type == "array" then .[] else empty end |
+        select(.type == "tool_use") | .name
+    ' "$JSONL_FILE" 2>/dev/null | sort | uniq -c | sort -rn | head -15)
+    TOOL_COUNT=$(echo "$TOOL_STATS" | awk '{s+=$1} END {print s+0}')
+    FILES_ALL=$(jq -r '
+        select(.type == "assistant") |
+        .message.content // [] |
+        if type == "array" then .[] else empty end |
+        select(.type == "tool_use" and (.name == "Write" or .name == "Edit")) |
+        .input.file_path // empty
+    ' "$JSONL_FILE" 2>/dev/null | sort -u | head -20)
+    START_TIME=$(head -1 "$SESSION_PATH/memory.md" 2>/dev/null | grep -oP '\d{2}:\d{2}' || echo "unknown")
 
-TOOL_STATS=$(jq -r '
-    select(.type == "assistant") |
-    .message.content // [] |
-    if type == "array" then .[] else empty end |
-    select(.type == "tool_use") | .name
-' "$JSONL_FILE" 2>/dev/null | sort | uniq -c | sort -rn | head -15)
-
-TOOL_COUNT=$(echo "$TOOL_STATS" | awk '{s+=$1} END {print s+0}')
-
-FILES_ALL=$(jq -r '
-    select(.type == "assistant") |
-    .message.content // [] |
-    if type == "array" then .[] else empty end |
-    select(.type == "tool_use" and (.name == "Write" or .name == "Edit")) |
-    .input.file_path // empty
-' "$JSONL_FILE" 2>/dev/null | sort -u | head -20)
-
-START_TIME=$(head -1 "$SESSION_PATH/memory.md" 2>/dev/null | grep -oP '\d{2}:\d{2}' || echo "unknown")
-
-cat > "$SESSION_PATH/session-summary.md" << SUMMARYEOF
+    cat > "$SESSION_PATH/session-summary.md" << SUMMARYEOF
 # Session Summary - $(date +%Y-%m-%d) $TIMESTAMP
 
 ## Duration
 - Started: $START_TIME
 - Ended: $TIMESTAMP
 
-## M/C/I Status
-- Complete: $([ "$MCI_COMPLETE" = "true" ] && echo "YES (saved by Claude)" || echo "NO (auto-generated at stop)")
-- Entries: $(grep -c "^Memory:" "$MCI_FILE" 2>/dev/null || echo 0)
+## Memory Status
+- state.md: $([ -f "$STATE_FILE" ] && echo "EXISTS ($(wc -c < "$STATE_FILE" 2>/dev/null) bytes)" || echo "MISSING")
+- MCI saved by: $([ "$MCI_WRITTEN" = "true" ] && echo "state.md snapshot" || echo "auto-generated from JSONL")
+- MCI entries: $(grep -c "^Memory:" "$MCI_FILE" 2>/dev/null || echo 0)
 
 ## Stats
 - User messages: ~$USER_COUNT
@@ -152,12 +162,12 @@ $TOOL_STATS
 $FILES_ALL
 SUMMARYEOF
 
-# Truncate if too long
-truncate -s "<8000" "$SESSION_PATH/session-summary.md" 2>/dev/null
+    truncate -s "<8000" "$SESSION_PATH/session-summary.md" 2>/dev/null
+fi
 
 # Update session log
 echo "" >> "$SESSION_PATH/memory.md"
-echo "## $TIMESTAMP - SESSION ENDED [MCI: $([ "$MCI_COMPLETE" = "true" ] && echo "COMPLETE" || echo "AUTO-GENERATED")]" >> "$SESSION_PATH/memory.md"
+echo "## $TIMESTAMP - SESSION ENDED [state.md: $([ -f "$STATE_FILE" ] && echo "EXISTS" || echo "MISSING")]" >> "$SESSION_PATH/memory.md"
 
 echo '{"suppressOutput": true}'
 exit 0
