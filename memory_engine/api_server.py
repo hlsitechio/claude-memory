@@ -570,11 +570,12 @@ class APIHandler(BaseHTTPRequestHandler):
         "copilot": {
             "name": "Copilot CLI",
             "command": "github-copilot-cli",
+            "alt_commands": ["ghcs", "gh copilot"],
             "check": ["github-copilot-cli", "--version"],
             "install": {
-                "win32": "npm install -g @githubnext/github-copilot-cli",
-                "darwin": "npm install -g @githubnext/github-copilot-cli",
-                "linux": "npm install -g @githubnext/github-copilot-cli",
+                "win32": "gh extension install github/gh-copilot",
+                "darwin": "gh extension install github/gh-copilot",
+                "linux": "gh extension install github/gh-copilot",
             },
         },
     }
@@ -585,18 +586,29 @@ class APIHandler(BaseHTTPRequestHandler):
 
         results = {}
         for key, tool in self.TOOLS.items():
-            found = shutil.which(tool["command"]) is not None
+            # Check primary command and alternates
+            found_cmd = None
+            if shutil.which(tool["command"]):
+                found_cmd = tool["command"]
+            else:
+                for alt in tool.get("alt_commands", []):
+                    if shutil.which(alt.split()[0]):
+                        found_cmd = alt
+                        break
+
             version = None
-            if found:
+            if found_cmd:
                 try:
-                    r = subprocess.run(tool["check"], capture_output=True, text=True, timeout=5)
+                    check_cmd = [found_cmd, "--version"] if " " not in found_cmd else found_cmd.split() + ["--version"]
+                    r = subprocess.run(check_cmd, capture_output=True, text=True, timeout=5)
                     version = r.stdout.strip().split("\n")[0][:50] if r.returncode == 0 else None
                 except Exception:
                     pass
+
             results[key] = {
                 "name": tool["name"],
-                "command": tool["command"],
-                "installed": found,
+                "command": found_cmd or tool["command"],
+                "installed": found_cmd is not None,
                 "version": version,
                 "install_cmd": tool["install"].get(platform, tool["install"]["linux"]),
             }
@@ -616,10 +628,10 @@ class APIHandler(BaseHTTPRequestHandler):
 
         try:
             if platform == "win32":
-                # Try Windows Terminal first, fall back to cmd
+                # npm tools are .cmd files — must run through cmd /k
                 wt = shutil.which("wt")
                 if wt:
-                    subprocess.Popen(["wt", "new-tab", "--title", tool["name"], cmd])
+                    subprocess.Popen(["wt", "new-tab", "--title", tool["name"], "cmd", "/k", cmd])
                 else:
                     subprocess.Popen(["cmd", "/c", "start", "cmd", "/k", cmd])
             elif platform == "darwin":
