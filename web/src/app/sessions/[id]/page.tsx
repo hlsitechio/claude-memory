@@ -60,6 +60,7 @@ export default function SessionDetailPage() {
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
   const [digest, setDigest] = useState<Digest | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const [showToc, setShowToc] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [collapsedToolGroups, setCollapsedToolGroups] = useState(new Set<number>());
@@ -73,11 +74,13 @@ export default function SessionDetailPage() {
     Promise.all([
       api.session(sessionId),
       api.digest(sessionId).catch(() => null),
+      api.sessionSummary(sessionId).catch(() => null),
     ])
-      .then(([sessionData, digestData]) => {
+      .then(([sessionData, digestData, summaryData]) => {
         setEntries(sessionData.entries || []);
         setTotal(sessionData.total || 0);
         if (digestData) setDigest(digestData);
+        if (summaryData?.summary) setSummary(summaryData.summary);
       })
       .catch((err) => {
         setError(err.message || "Failed to load session");
@@ -286,6 +289,20 @@ export default function SessionDetailPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Summary Panel */}
+          {summary ? (
+            <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/[0.06] to-purple-500/[0.06] p-5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 mb-2">Session Summary</p>
+              <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">{summary}</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-muted-foreground/20 p-4 text-center">
+              <p className="text-xs text-muted-foreground">
+                No summary yet — run <code className="bg-muted px-1.5 py-0.5 rounded text-[11px]">/summarize {shortId}</code> in Claude Code to generate one
+              </p>
+            </div>
+          )}
 
           {/* Table of Contents */}
           {showToc && digest && (

@@ -26,6 +26,7 @@ export interface Session {
   ended_at: string;
   entries: number;
   source?: string;
+  summary?: string;
 }
 
 export interface DetectResponse {
@@ -146,6 +147,20 @@ export const api = {
   // Setup ingest
   runIngest: async () => {
     const res = await fetch("/api/setup/ingest", { method: "POST" });
+    return res.json();
+  },
+
+  // Session summary — LLM-generated summary stored in DB
+  sessionSummary: async (id: string) => {
+    return fetchJson<{ session_id: string; summary: string | null }>("/api/session/summary", { id });
+  },
+
+  saveSessionSummary: async (sessionId: string, summary: string) => {
+    const res = await fetch("/api/session/summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, summary }),
+    });
     return res.json();
   },
 

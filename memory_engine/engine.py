@@ -91,7 +91,8 @@ class MemoryEngine:
                 lines_processed INTEGER DEFAULT 0,
                 total_lines INTEGER,
                 last_processed_at TEXT,
-                status TEXT DEFAULT 'pending' -- pending/processing/done
+                status TEXT DEFAULT 'pending', -- pending/processing/done
+                summary TEXT                  -- LLM-generated session summary
             );
 
             CREATE TABLE IF NOT EXISTS ingest_log (
@@ -190,6 +191,7 @@ class MemoryEngine:
         for sql in [
             "ALTER TABLE entries ADD COLUMN source TEXT DEFAULT 'claude_code'",
             "ALTER TABLE sessions ADD COLUMN source TEXT DEFAULT 'claude_code'",
+            "ALTER TABLE sessions ADD COLUMN summary TEXT",
         ]:
             try:
                 self.conn.execute(sql)

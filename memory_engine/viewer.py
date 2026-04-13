@@ -578,6 +578,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
             self.handle_api_export(params)
         elif path == "/api/session/digest":
             self.handle_api_session_digest(params)
+        elif path == "/api/session/summary":
+            self.handle_api_session_summary_get(params)
         else:
             self.send_error(404)
 
@@ -593,6 +595,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return
         elif path == "/api/setup/ingest":
             self.handle_api_setup_ingest_post()
+            return
+        elif path == "/api/session/summary":
+            self.handle_api_session_summary_post(post_data)
             return
 
         from urllib.parse import parse_qs as pqs
@@ -1230,6 +1235,19 @@ function toggleSidebar() {{
                 body += '</div>'
         except Exception:
             pass
+
+        # ── Summary Panel ──
+        summary_row = conn.execute("SELECT summary FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        session_summary = summary_row["summary"] if summary_row and summary_row["summary"] else None
+        if session_summary:
+            body += f'''<div style="background: linear-gradient(135deg, rgba(88,166,255,0.08), rgba(124,58,237,0.08)); border:1px solid rgba(88,166,255,0.2); border-radius:10px; padding:16px 20px; margin-bottom:16px;">
+                <div style="font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:0.1em; color:var(--accent); margin-bottom:8px;">Session Summary</div>
+                <div style="font-size:13px; line-height:1.6; color:var(--text1); white-space:pre-wrap;">{escape(session_summary)}</div>
+            </div>'''
+        else:
+            body += f'''<div style="background:var(--bg2); border:1px dashed var(--border); border-radius:10px; padding:12px 20px; margin-bottom:16px; text-align:center;">
+                <span style="font-size:12px; color:var(--text2);">No summary yet — run <code>/summarize {sid_short}</code> in Claude Code to generate one</span>
+            </div>'''
 
         body += f'''<div style="display:flex; gap:12px; margin-bottom:16px; align-items:center;">
             <a href="/sessions" style="color:var(--text2);">← Back</a>
@@ -2678,7 +2696,7 @@ async function quickAssign(sid) {{
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
         rows = conn.execute(f"""
-            SELECT s.id, s.status, s.last_processed_at, s.source,
+            SELECT s.id, s.status, s.last_processed_at, s.source, s.summary,
                    COUNT(e.id) as entry_count,
                    MIN(e.timestamp) as started_at,
                    MAX(e.timestamp) as ended_at
@@ -2696,14 +2714,17 @@ async function quickAssign(sid) {{
 
         sessions = []
         for r in rows:
-            sessions.append({
+            s_obj = {
                 "id": r["id"],
                 "status": r["status"] or "done",
                 "started_at": r["started_at"] or "",
                 "ended_at": r["ended_at"] or "",
                 "entries": r["entry_count"] or 0,
                 "source": r["source"] or "claude_code",
-            })
+            }
+            if r["summary"]:
+                s_obj["summary"] = r["summary"]
+            sessions.append(s_obj)
         self.send_json({"total": total, "sessions": sessions})
 
     def handle_api_export(self, params):
@@ -2943,6 +2964,44 @@ async function quickAssign(sid) {{
             "segment_count": len(segments),
             "key_moments": key_moments,
         })
+
+    def handle_api_session_summary_get(self, params):
+        """GET /api/session/summary?id=xxx — Return session summary."""
+        session_id = params.get("id", [""])[0]
+        if not session_id:
+            self.send_json({"error": "id required"}, 400)
+            return
+        conn = get_db()
+        row = conn.execute("SELECT summary FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        conn.close()
+        if not row:
+            self.send_json({"error": "session not found"}, 404)
+            return
+        self.send_json({"session_id": session_id, "summary": row["summary"]})
+
+    def handle_api_session_summary_post(self, post_data):
+        """POST /api/session/summary — Save session summary.
+        Body: {"session_id": "xxx", "summary": "..."}"""
+        try:
+            data = json.loads(post_data)
+        except (json.JSONDecodeError, ValueError):
+            self.send_json({"error": "invalid JSON"}, 400)
+            return
+        session_id = data.get("session_id", "")
+        summary = data.get("summary", "")
+        if not session_id or not summary:
+            self.send_json({"error": "session_id and summary required"}, 400)
+            return
+        conn = get_db()
+        exists = conn.execute("SELECT id FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if not exists:
+            conn.close()
+            self.send_json({"error": "session not found"}, 404)
+            return
+        conn.execute("UPDATE sessions SET summary = ? WHERE id = ?", (summary, session_id))
+        conn.commit()
+        conn.close()
+        self.send_json({"ok": True, "session_id": session_id})
 
     # ── Setup Wizard ─────────────────────────────────────────────────
 
