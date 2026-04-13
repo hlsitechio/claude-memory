@@ -2,9 +2,9 @@
   <img src="web/public/banner.png" alt="Memory Engine" width="800" />
 </p>
 
-<h1 align="center">Memory Engine</h1>
+<h1 align="center">Memory Engine — Persistent Memory for AI Coding Agents</h1>
 
-<p align="center"><strong>Persistent brain database for AI coding tools.</strong><br/>Indexes conversation history from Claude Code, Codex CLI, and Copilot CLI into searchable SQLite + vector embeddings with a live web dashboard.</p>
+<p align="center">Never lose a conversation. Full history search, semantic recall, and live monitoring for Claude Code, Codex CLI, and Copilot CLI.<br/>Indexes every session into searchable SQLite + vector embeddings with a live web dashboard.</p>
 
 ## Features
 
