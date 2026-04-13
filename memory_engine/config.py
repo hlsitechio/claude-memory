@@ -60,7 +60,8 @@ IMAGES_DIR = Path(os.environ.get("MEMORY_IMAGES_DIR", str(_get_engine_dir() / "i
 
 # Claude Code JSONL conversation files
 def _detect_jsonl_dir():
-    """Auto-detect JSONL directory based on Claude Code's project structure."""
+    """Auto-detect JSONL directory based on Claude Code's project structure.
+    Returns the projects/ root so all project dirs are accessible."""
     claude_dir = _get_claude_config_dir()
 
     # Check env override
@@ -68,19 +69,28 @@ def _detect_jsonl_dir():
     if env:
         return Path(env)
 
-    # Auto-detect: look for projects/ subdirectory with .jsonl files
+    # Return the projects/ root — iter_claude_code_files() scans all subdirs
     projects_dir = claude_dir / "projects"
     if projects_dir.exists():
-        # Find the project directory (usually the most recently modified)
-        candidates = sorted(projects_dir.iterdir(), key=lambda p: p.stat().st_mtime if p.is_dir() else 0, reverse=True)
-        for c in candidates:
-            if c.is_dir() and list(c.glob("*.jsonl")):
-                return c
+        return projects_dir
 
     # Fallback: claude config dir itself
     return claude_dir
 
 JSONL_DIR = _detect_jsonl_dir()
+
+
+def iter_claude_code_files():
+    """Iterate ALL Claude Code session JSONL files across all project directories.
+    Includes main sessions and subagent sessions (recursive).
+    Returns sorted by modification time (newest first)."""
+    if not JSONL_DIR or not Path(JSONL_DIR).exists():
+        return []
+    return sorted(
+        Path(JSONL_DIR).rglob("*.jsonl"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
 
 # ── Multi-source conversation directories ──────────────────────
 

@@ -36,7 +36,7 @@ def cmd_ingest(args):
     """Ingest conversation history from detected sources."""
     from engine import MemoryEngine
     from config import JSONL_DIR, COPILOT_JSONL_DIR, CODEX_JSONL_DIR
-    from config import iter_copilot_files, iter_codex_files
+    from config import iter_copilot_files, iter_codex_files, iter_claude_code_files
     from pathlib import Path
 
     eng = MemoryEngine()
@@ -45,22 +45,18 @@ def cmd_ingest(args):
     total_skipped = 0
     total_entries = 0
 
-    # Claude Code
+    # Claude Code (all projects — CLI, VS Code, Desktop, subagents)
     if source in ("all", "claude_code"):
-        jdir = Path(JSONL_DIR)
-        if jdir.exists():
-            jsonls = sorted(jdir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-            print(f"[*] Claude Code: {len(jsonls)} files in {jdir}")
-            for f in jsonls:
-                r = eng.ingest_jsonl(str(f), source="claude_code")
-                if r["status"] == "already_done":
-                    total_skipped += 1
-                else:
-                    total_done += 1
-                    total_entries += r.get("entries", 0)
-            print(f"[+] Claude Code: {total_done} new, {total_skipped} skipped")
-        else:
-            print(f"[-] Claude Code: directory not found ({jdir})")
+        files = iter_claude_code_files()
+        print(f"[*] Claude Code: {len(files)} files across all projects in {JSONL_DIR}")
+        for f in files:
+            r = eng.ingest_jsonl(str(f), source="claude_code")
+            if r["status"] == "already_done":
+                total_skipped += 1
+            else:
+                total_done += 1
+                total_entries += r.get("entries", 0)
+        print(f"[+] Claude Code: {total_done} new, {total_skipped} skipped")
 
     # Copilot CLI
     if source in ("all", "copilot"):

@@ -29,7 +29,7 @@ else:
 # Add engine to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from engine import MemoryEngine
-from config import JSONL_DIR, LOG_FILE, LOCK_FILE
+from config import JSONL_DIR, LOG_FILE, LOCK_FILE, iter_claude_code_files
 
 
 def acquire_lock():
@@ -77,23 +77,20 @@ def log(msg):
 
 def ingest_latest(engine):
     """Ingest the most recently modified JSONL file."""
-    jsonls = sorted(JSONL_DIR.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    jsonls = iter_claude_code_files()
     if not jsonls:
         log("No JSONL files found")
         return
 
     latest = jsonls[0]
-    result = engine.ingest_jsonl(str(latest))
+    result = engine.ingest_jsonl(str(latest), source="claude_code")
     log(f"Latest: {latest.stem[:8]}... → {result['status']} ({result.get('entries', 0)} entries)")
     return result
 
 
 def ingest_all(engine):
-    """Ingest all JSONL files (skips already-done)."""
-    jsonls = sorted(JSONL_DIR.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    archive_dir = JSONL_DIR / "archive"
-    if archive_dir.exists():
-        jsonls.extend(sorted(archive_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True))
+    """Ingest all JSONL files across all Claude Code projects (skips already-done)."""
+    jsonls = iter_claude_code_files()
 
     total = len(jsonls)
     done = 0
@@ -101,7 +98,7 @@ def ingest_all(engine):
     entries_total = 0
 
     for f in jsonls:
-        result = engine.ingest_jsonl(str(f))
+        result = engine.ingest_jsonl(str(f), source="claude_code")
         if result["status"] == "already_done":
             skipped += 1
         else:
@@ -114,7 +111,7 @@ def ingest_all(engine):
 
 def ingest_recent(engine, count=5):
     """Ingest the N most recently modified JSONLs (re-processes even if done)."""
-    jsonls = sorted(JSONL_DIR.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:count]
+    jsonls = iter_claude_code_files()[:count]
     entries_total = 0
 
     for f in jsonls:
