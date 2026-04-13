@@ -576,6 +576,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
             self.handle_api_sessions(params)
         elif path == "/api/export":
             self.handle_api_export(params)
+        elif path == "/api/session/digest":
+            self.handle_api_session_digest(params)
         else:
             self.send_error(404)
 
@@ -1154,7 +1156,7 @@ function toggleSidebar() {{
         sf = params.get("source", [""])[0]
         session_id = params.get("id", [""])[0]
         page = int(params.get("page", ["1"])[0] or 1)
-        per_page = 100
+        per_page = 200
         offset = (page - 1) * per_page
 
         if not session_id:
@@ -1169,7 +1171,47 @@ function toggleSidebar() {{
         """, (session_id, per_page, offset)).fetchall()
 
         sid_short = session_id[:8]
-        body = f'<h3 style="margin-bottom:12px;">Session {sid_short}… ({total:,} entries)</h3>'
+
+        # ── Build digest TOC for the full session ──
+        all_rows = conn.execute("""
+            SELECT id, content, role, timestamp, source_line
+            FROM entries WHERE session_id = ? ORDER BY source_line ASC
+        """, (session_id,)).fetchall()
+
+        segments = []
+        current_seg = None
+        tool_count_total = 0
+        for e in all_rows:
+            c = e["content"] or ""
+            is_tool = c.startswith("[TOOL:") or c.startswith('{"result":')
+            is_user = e["role"] == "user" and not is_tool
+            if is_tool:
+                tool_count_total += 1
+            if is_user:
+                if current_seg:
+                    segments.append(current_seg)
+                title = c[:100].replace("\n", " ").strip()
+                if len(c) > 100:
+                    title += "…"
+                current_seg = {
+                    "title": title,
+                    "line": e["source_line"],
+                    "ts": (e["timestamp"] or "")[:16],
+                    "entries": 1,
+                    "tools": 0,
+                }
+            elif current_seg:
+                current_seg["entries"] += 1
+                if is_tool:
+                    current_seg["tools"] += 1
+            else:
+                current_seg = {"title": "(session start)", "line": e["source_line"],
+                               "ts": (e["timestamp"] or "")[:16], "entries": 1, "tools": 1 if is_tool else 0}
+        if current_seg:
+            segments.append(current_seg)
+
+        # ── Header ──
+        body = f'<h3 style="margin-bottom:4px;">Session {sid_short}… <span style="color:var(--text2); font-weight:normal;">({total:,} entries, {tool_count_total} tool calls, {len(segments)} turns)</span></h3>'
 
         # Show project badges
         try:
@@ -1189,10 +1231,72 @@ function toggleSidebar() {{
         except Exception:
             pass
 
-        body += f'<p style="color:var(--text2); margin-bottom:16px;"><a href="/sessions">← Back to sessions</a></p>'
+        body += f'''<div style="display:flex; gap:12px; margin-bottom:16px; align-items:center;">
+            <a href="/sessions" style="color:var(--text2);">← Back</a>
+            <a href="/api/export?id={escape(session_id)}" style="color:var(--accent); font-size:12px;">⬇ Export JSON</a>
+            <button onclick="document.getElementById('toc').style.display=document.getElementById('toc').style.display==='none'?'block':'none'" style="background:var(--bg2); border:1px solid var(--border); color:var(--text2); padding:3px 10px; border-radius:4px; cursor:pointer; font-size:12px;">📑 Table of Contents ({len(segments)} turns)</button>
+            <button onclick="document.querySelectorAll('.tool-group').forEach(el=>el.open=!el.open)" style="background:var(--bg2); border:1px solid var(--border); color:var(--text2); padding:3px 10px; border-radius:4px; cursor:pointer; font-size:12px;">🔧 Toggle Tools</button>
+        </div>'''
+
+        # ── Table of Contents ──
+        body += '<div id="toc" style="display:none; background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:16px; max-height:400px; overflow-y:auto;">'
+        body += '<div style="font-size:11px; font-weight:bold; color:var(--text2); margin-bottom:8px;">CONVERSATION MAP</div>'
+        for i, seg in enumerate(segments):
+            tc_badge = f' <span style="color:var(--text2); opacity:0.5;">[{seg["tools"]} tools]</span>' if seg["tools"] else ""
+            # Determine which page this segment's line falls on
+            seg_page = (seg["line"] // per_page) + 1
+            body += f'<a href="/session?id={escape(session_id)}&page={seg_page}&source={sf}#L{seg["line"]}" style="display:block; padding:3px 8px; margin-bottom:2px; border-radius:4px; font-size:11px; text-decoration:none; color:var(--text1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'">'
+            body += f'<span style="color:var(--text2); width:35px; display:inline-block;">#{i+1}</span>'
+            body += f'<span style="color:var(--accent); width:50px; display:inline-block;">L{seg["line"]}</span>'
+            body += f'{escape(seg["title"][:80])}{tc_badge}</a>'
+        body += '</div>'
+
+        # ── Entries with tool collapsing ──
+        tool_buffer = []
+
+        def flush_tools():
+            nonlocal tool_buffer
+            if not tool_buffer:
+                return ""
+            n = len(tool_buffer)
+            # Extract tool names
+            names = []
+            for tb in tool_buffer:
+                c = tb["content"] or ""
+                if c.startswith("[TOOL:"):
+                    end = c.find("]")
+                    if end > 0:
+                        names.append(c[6:end])
+                else:
+                    names.append("result")
+            unique_names = list(dict.fromkeys(names))
+            label = ", ".join(unique_names[:5])
+            if len(unique_names) > 5:
+                label += f" +{len(unique_names)-5}"
+
+            html_out = f'<details class="tool-group" style="margin:4px 0; border:1px solid var(--border); border-radius:6px; background:var(--bg2);">'
+            html_out += f'<summary style="padding:6px 12px; cursor:pointer; font-size:11px; color:var(--text2);">🔧 {n} tool call{"s" if n>1 else ""}: {escape(label)}</summary>'
+            html_out += '<div style="padding:4px 12px 8px;">'
+            for tb in tool_buffer:
+                content = render_content(tb["content"], max_len=500)
+                ts = tb["timestamp"][:19] if tb["timestamp"] else "?"
+                html_out += f'<div style="padding:4px 0; border-bottom:1px solid var(--border); font-size:11px;"><span style="color:var(--text2);">{ts} L{tb["source_line"]}</span><pre style="margin:2px 0; white-space:pre-wrap; font-size:11px; opacity:0.7;">{content}</pre></div>'
+            html_out += '</div></details>'
+            tool_buffer = []
+            return html_out
 
         for r in rows:
-            content = render_content(r["content"], max_len=2000)
+            content_raw = r["content"] or ""
+            is_tool = content_raw.startswith("[TOOL:") or content_raw.startswith('{"result":')
+
+            if is_tool:
+                tool_buffer.append(r)
+                continue
+
+            # Flush any pending tools before this non-tool entry
+            body += flush_tools()
+
+            content = render_content(content_raw, max_len=2000)
             ts = r["timestamp"][:19] if r["timestamp"] else "?"
             try:
                 source_name = r['source'] or 'claude_code'
@@ -1200,7 +1304,7 @@ function toggleSidebar() {{
                 source_name = 'claude_code'
             source_label = {'claude_code': 'Claude', 'copilot': 'Copilot', 'codex': 'Codex'}.get(source_name, source_name)
             body += f"""
-            <div class="entry">
+            <div class="entry" id="L{r['source_line']}">
                 <div class="meta">
                     <span class="role {r['role']}">{r['role']}</span>
                     <span class="source-badge {source_name}">{source_label}</span>
@@ -1210,13 +1314,18 @@ function toggleSidebar() {{
                 <div class="content">{content}</div>
             </div>"""
 
+        # Flush remaining tools
+        body += flush_tools()
+
         # Pagination
         total_pages = (total + per_page - 1) // per_page
         if total_pages > 1:
             body += '<div class="pagination">'
-            for p in range(1, min(total_pages + 1, 30)):
+            for p in range(1, min(total_pages + 1, 50)):
                 cls = "current" if p == page else ""
-                body += f'<a href="/session?id={escape(session_id)}&page={p}" class="{cls}">{p}</a>'
+                body += f'<a href="/session?id={escape(session_id)}&page={p}&source={sf}" class="{cls}">{p}</a>'
+            if total_pages > 50:
+                body += f'<span style="color:var(--text2);"> … {total_pages}</span>'
             body += '</div>'
 
         conn.close()
@@ -2666,6 +2775,173 @@ async function quickAssign(sid) {{
             "session_id": session_id,
             "date": date_str,
             "entries": len(entries),
+        })
+
+    def handle_api_session_digest(self, params):
+        """GET /api/session/digest?id=xxx — Structured digest of a session.
+        Breaks the session into navigable segments, groups tool calls,
+        produces stats, and extracts key moments for quick navigation."""
+        session_id = params.get("id", [""])[0]
+        if not session_id:
+            self.send_json({"error": "id required"}, 400)
+            return
+
+        conn = get_db()
+        meta = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if not meta:
+            conn.close()
+            self.send_json({"error": f"Session {session_id} not found"}, 404)
+            return
+
+        rows = conn.execute("""
+            SELECT id, content, role, timestamp, source_line
+            FROM entries WHERE session_id = ? ORDER BY source_line ASC
+        """, (session_id,)).fetchall()
+        conn.close()
+
+        entries = [dict(r) for r in rows]
+        if not entries:
+            self.send_json({"session_id": session_id, "segments": [], "stats": {}})
+            return
+
+        # ── Stats ──
+        role_counts = {}
+        tool_calls = 0
+        total_chars = 0
+        for e in entries:
+            role_counts[e["role"]] = role_counts.get(e["role"], 0) + 1
+            total_chars += len(e["content"] or "")
+            if (e["content"] or "").startswith("[TOOL:"):
+                tool_calls += 1
+
+        timestamps = [e["timestamp"] for e in entries if e["timestamp"]]
+        time_start = timestamps[0] if timestamps else None
+        time_end = timestamps[-1] if timestamps else None
+
+        stats = {
+            "total_entries": len(entries),
+            "by_role": role_counts,
+            "tool_calls": tool_calls,
+            "total_chars": total_chars,
+            "time_start": time_start,
+            "time_end": time_end,
+        }
+
+        # ── Segment by user prompts ──
+        # Each user message starts a new "turn". Consecutive tool calls get grouped.
+        segments = []
+        current_segment = None
+
+        for e in entries:
+            content = e["content"] or ""
+            is_tool = content.startswith("[TOOL:") or content.startswith('{"result":')
+            is_user = e["role"] == "user" and not is_tool
+
+            if is_user:
+                # Start a new segment on each user message
+                if current_segment:
+                    segments.append(current_segment)
+                # Extract a short title from the user prompt
+                title = content[:120].replace("\n", " ").strip()
+                if len(content) > 120:
+                    title += "..."
+                current_segment = {
+                    "index": len(segments),
+                    "title": title,
+                    "start_line": e["source_line"],
+                    "start_entry_id": e["id"],
+                    "timestamp": e["timestamp"],
+                    "entries": 1,
+                    "tool_calls": 0,
+                    "assistant_chars": 0,
+                    "messages": [{
+                        "role": e["role"],
+                        "preview": content[:300],
+                        "source_line": e["source_line"],
+                        "is_tool": False,
+                        "full_length": len(content),
+                    }],
+                }
+            elif current_segment:
+                current_segment["entries"] += 1
+                if is_tool:
+                    current_segment["tool_calls"] += 1
+                if e["role"] == "assistant" and not is_tool:
+                    current_segment["assistant_chars"] += len(content)
+
+                # For non-tool messages, add preview. For tools, add collapsed summary.
+                if is_tool:
+                    # Extract tool name
+                    tool_name = ""
+                    if content.startswith("[TOOL:"):
+                        bracket_end = content.find("]")
+                        if bracket_end > 0:
+                            tool_name = content[6:bracket_end]
+                    current_segment["messages"].append({
+                        "role": e["role"],
+                        "preview": f"[{tool_name}]" if tool_name else "[tool result]",
+                        "source_line": e["source_line"],
+                        "is_tool": True,
+                        "full_length": len(content),
+                    })
+                else:
+                    current_segment["messages"].append({
+                        "role": e["role"],
+                        "preview": content[:300],
+                        "source_line": e["source_line"],
+                        "is_tool": False,
+                        "full_length": len(content),
+                    })
+            else:
+                # Entries before first user message (system/assistant intro)
+                if not current_segment:
+                    current_segment = {
+                        "index": 0,
+                        "title": "(session start)",
+                        "start_line": e["source_line"],
+                        "start_entry_id": e["id"],
+                        "timestamp": e["timestamp"],
+                        "entries": 1,
+                        "tool_calls": 1 if is_tool else 0,
+                        "assistant_chars": len(content) if e["role"] == "assistant" and not is_tool else 0,
+                        "messages": [{
+                            "role": e["role"],
+                            "preview": content[:300],
+                            "source_line": e["source_line"],
+                            "is_tool": is_tool,
+                            "full_length": len(content),
+                        }],
+                    }
+                else:
+                    current_segment["entries"] += 1
+
+        if current_segment:
+            segments.append(current_segment)
+
+        # ── Key moments (longest assistant responses = most substantive) ──
+        assistant_entries = [
+            e for e in entries
+            if e["role"] == "assistant"
+            and not (e["content"] or "").startswith("[TOOL:")
+            and not (e["content"] or "").startswith('{"result":')
+        ]
+        assistant_entries.sort(key=lambda e: len(e["content"] or ""), reverse=True)
+        key_moments = []
+        for e in assistant_entries[:10]:
+            content = e["content"] or ""
+            key_moments.append({
+                "source_line": e["source_line"],
+                "preview": content[:200],
+                "length": len(content),
+                "timestamp": e["timestamp"],
+            })
+
+        self.send_json({
+            "session_id": session_id,
+            "stats": stats,
+            "segments": segments,
+            "segment_count": len(segments),
+            "key_moments": key_moments,
         })
 
     # ── Setup Wizard ─────────────────────────────────────────────────

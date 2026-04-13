@@ -149,6 +149,17 @@ export const api = {
     return res.json();
   },
 
+  // Session digest — structured summary with segments, stats, key moments
+  digest: async (id: string) => {
+    return fetchJson<{
+      session_id: string;
+      stats: { total_entries: number; by_role: Record<string, number>; tool_calls: number; total_chars: number; time_start: string; time_end: string };
+      segments: { index: number; title: string; start_line: number; start_entry_id: number; timestamp: string; entries: number; tool_calls: number; assistant_chars: number }[];
+      segment_count: number;
+      key_moments: { source_line: number; preview: string; length: number; timestamp: string }[];
+    }>("/api/session/digest", { id });
+  },
+
   // Export session to disk as JSON
   exportSession: async (id: string, dir?: string) => {
     return fetchJson<{ ok: boolean; path: string; session_id: string; date: string; entries: number; error?: string }>(
