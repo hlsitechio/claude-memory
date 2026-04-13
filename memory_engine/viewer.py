@@ -605,6 +605,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
             self.handle_api_session_new(params)
         elif path.startswith("/img/"):
             self.handle_image(path[5:])  # strip /img/ prefix
+        elif path == "/api/pulse":
+            self.handle_api_pulse(params)
         elif path == "/api/stats":
             self.handle_api_stats(params)
         elif path == "/api/search":
@@ -2619,6 +2621,65 @@ async function quickAssign(sid) {{
         self.end_headers()
         with open(filepath, "rb") as f:
             self.wfile.write(f.read())
+
+    def handle_api_pulse(self, params):
+        """GET /api/pulse — Live pulse: active session + latest entries per source.
+        Returns the most recent session and last few messages for each source."""
+        conn = get_db()
+        sources = ["claude_code", "copilot", "codex"]
+        pulse = {}
+
+        for src in sources:
+            # Most recent session
+            session = conn.execute("""
+                SELECT s.id, s.status, s.summary, s.source,
+                       COUNT(e.id) as entry_count,
+                       MIN(e.timestamp) as started_at,
+                       MAX(e.timestamp) as ended_at
+                FROM sessions s LEFT JOIN entries e ON e.session_id = s.id
+                WHERE s.source = ?
+                GROUP BY s.id ORDER BY s.last_processed_at DESC LIMIT 1
+            """, (src,)).fetchone()
+
+            if not session:
+                pulse[src] = {"active": False}
+                continue
+
+            # Check if session is "live" (last entry within last 10 minutes)
+            is_live = False
+            if session["ended_at"]:
+                try:
+                    from datetime import datetime, timedelta, timezone
+                    last_ts = session["ended_at"].rstrip("Z")
+                    if "+" not in last_ts and "-" not in last_ts[11:]:
+                        last_dt = datetime.fromisoformat(last_ts).replace(tzinfo=timezone.utc)
+                    else:
+                        last_dt = datetime.fromisoformat(last_ts)
+                    is_live = (datetime.now(timezone.utc) - last_dt).total_seconds() < 600
+                except Exception:
+                    pass
+
+            # Last 5 non-tool entries from this session
+            recent = conn.execute("""
+                SELECT content, role, timestamp, session_id
+                FROM entries
+                WHERE session_id = ? AND content NOT LIKE '[TOOL:%%' AND content NOT LIKE '{\"result\":%%'
+                ORDER BY source_line DESC LIMIT 5
+            """, (session["id"],)).fetchall()
+
+            pulse[src] = {
+                "active": True,
+                "live": is_live,
+                "session_id": session["id"],
+                "entries": session["entry_count"] or 0,
+                "started_at": session["started_at"] or "",
+                "ended_at": session["ended_at"] or "",
+                "summary": session["summary"],
+                "recent": [dict(r) for r in reversed(recent)],
+            }
+
+        conn.close()
+        self.send_json(pulse)
 
     def handle_api_stats(self, params):
         source = params.get("source", [""])[0]

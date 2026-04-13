@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSource } from "@/lib/source-context";
-import { api, SOURCE_META, Entry, Session } from "@/lib/api";
+import { api, SOURCE_META, Source, Entry, Session } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -17,24 +17,53 @@ import {
   Activity,
   Clock,
   Radio,
+  Terminal,
+  GitBranch,
+  Bot,
+  User,
 } from "lucide-react";
 import Link from "next/link";
+
+interface PulseSource {
+  active: boolean;
+  live?: boolean;
+  session_id?: string;
+  entries?: number;
+  started_at?: string;
+  ended_at?: string;
+  summary?: string | null;
+  recent?: Entry[];
+}
+
+const SOURCE_ICONS: Record<string, typeof Terminal> = {
+  claude_code: Terminal,
+  copilot: GitBranch,
+  codex: Bot,
+};
 
 export default function DashboardPage() {
   const { source } = useSource();
   const meta = SOURCE_META[source];
   const [stats, setStats] = useState({ entries: 0, sessions: 0, knowledge: 0, observations: 0 });
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [latestEntries, setLatestEntries] = useState<Entry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [pulse, setPulse] = useState<Record<string, PulseSource>>({});
 
   useEffect(() => {
     api.stats().then((s) =>
       setStats({ entries: s.entries, sessions: s.sessions_done, knowledge: s.knowledge, observations: 0 })
     ).catch(() => {});
     api.sessions({ source, limit: 6 }).then((s) => setSessions(s.sessions || [])).catch(() => {});
-    api.latest({ source, limit: 5 }).then((r) => setLatestEntries(r.entries || [])).catch(() => {});
+    api.pulse().then(setPulse).catch(() => {});
   }, [source]);
+
+  // Poll pulse every 5s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      api.pulse().then(setPulse).catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const statCards = [
     { label: "Entries", value: stats.entries, icon: Database, color: "text-blue-400" },
@@ -42,6 +71,8 @@ export default function DashboardPage() {
     { label: "Knowledge", value: stats.knowledge, icon: BookOpen, color: "text-purple-400" },
     { label: "Observations", value: stats.observations, icon: Lightbulb, color: "text-yellow-400" },
   ];
+
+  const sourceKeys: Source[] = ["claude_code", "copilot", "codex"];
 
   return (
     <div className="p-6 space-y-6">
@@ -52,6 +83,90 @@ export default function DashboardPage() {
           <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
           {meta.label} workspace
         </p>
+      </div>
+
+      {/* Live Pulse — all 3 sources */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Radio className="h-4 w-4 text-green-400" />
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Live Pulse</h2>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {sourceKeys.map((src) => {
+            const srcMeta = SOURCE_META[src];
+            const p = pulse[src];
+            const Icon = SOURCE_ICONS[src];
+            const isLive = p?.live;
+
+            return (
+              <Card key={src} className="relative overflow-hidden" style={isLive ? { boxShadow: `0 0 0 1px ${srcMeta.color}40` } : {}}>
+                {/* Live indicator bar */}
+                <div
+                  className="absolute top-0 left-0 right-0 h-0.5"
+                  style={{ backgroundColor: isLive ? srcMeta.color : "transparent" }}
+                />
+                <CardContent className="p-4">
+                  {/* Source header */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Icon className="h-4 w-4" style={{ color: srcMeta.color }} />
+                      <span className="text-sm font-semibold">{srcMeta.label}</span>
+                    </div>
+                    {p?.active ? (
+                      <div className="flex items-center gap-1.5">
+                        <div
+                          className={`h-2 w-2 rounded-full ${isLive ? "animate-pulse" : ""}`}
+                          style={{ backgroundColor: isLive ? "#22c55e" : "#6b7280" }}
+                        />
+                        <span className="text-[10px] text-muted-foreground">
+                          {isLive ? "LIVE" : "idle"}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground">no sessions</span>
+                    )}
+                  </div>
+
+                  {p?.active && p.session_id ? (
+                    <>
+                      {/* Session info */}
+                      <Link
+                        href={`/sessions/${p.session_id}`}
+                        className="block mb-3 group"
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <code className="text-primary group-hover:underline">{p.session_id.slice(0, 8)}</code>
+                          <span className="text-muted-foreground">{p.entries} entries</span>
+                        </div>
+                        {p.summary && (
+                          <p className="text-[11px] text-muted-foreground/80 mt-1 line-clamp-2">{p.summary}</p>
+                        )}
+                      </Link>
+
+                      {/* Mini live feed */}
+                      {p.recent && p.recent.length > 0 && (
+                        <div className="space-y-1.5 border-t border-border pt-2">
+                          {p.recent.slice(-3).map((e, i) => (
+                            <div key={i} className="flex gap-2 text-[11px]">
+                              <span className={`shrink-0 font-semibold ${
+                                e.role === "user" ? "text-green-400" : e.role === "assistant" ? "text-blue-400" : "text-yellow-400"
+                              }`}>
+                                {e.role === "user" ? "you" : e.role === "assistant" ? "ai" : e.role.slice(0, 3)}
+                              </span>
+                              <span className="text-foreground/60 truncate">{e.content?.slice(0, 120)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/50 text-center py-4">No active session</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
       {/* Stats */}
@@ -103,6 +218,9 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-2.5">
                         <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
                         <code className="text-xs text-primary">{s.id.slice(0, 8)}...</code>
+                        {s.summary && (
+                          <span className="text-[11px] text-muted-foreground/60 truncate max-w-[200px]">{s.summary.split("\n")[0].replace("What: ", "")}</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
                         <span>{s.entries} entries</span>
@@ -111,32 +229,6 @@ export default function DashboardPage() {
                     </Link>
                   ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Latest activity */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Latest Activity</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 space-y-2">
-              {latestEntries.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">No entries yet.</p>
-              ) : (
-                latestEntries.map((e, i) => (
-                  <div key={i} className="rounded-md border bg-muted/30 p-3">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Badge variant="outline" className={
-                        e.role === "user" ? "border-green-500/30 text-green-400 text-[10px]"
-                        : e.role === "assistant" ? "border-blue-500/30 text-blue-400 text-[10px]"
-                        : "border-yellow-500/30 text-yellow-400 text-[10px]"
-                      }>{e.role}</Badge>
-                      <span className="text-[10px] text-muted-foreground">{e.timestamp?.slice(0, 19)}</span>
-                    </div>
-                    <p className="text-xs text-foreground/80 line-clamp-2 font-mono">{e.content?.slice(0, 200)}</p>
-                  </div>
-                ))
               )}
             </CardContent>
           </Card>

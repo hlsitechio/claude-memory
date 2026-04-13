@@ -150,6 +150,20 @@ export const api = {
     return res.json();
   },
 
+  // Pulse — live status per source (active session + latest entries)
+  pulse: async () => {
+    return fetchJson<Record<string, {
+      active: boolean;
+      live?: boolean;
+      session_id?: string;
+      entries?: number;
+      started_at?: string;
+      ended_at?: string;
+      summary?: string | null;
+      recent?: Entry[];
+    }>>("/api/pulse");
+  },
+
   // Session summary — LLM-generated summary stored in DB
   sessionSummary: async (id: string) => {
     return fetchJson<{ session_id: string; summary: string | null }>("/api/session/summary", { id });
