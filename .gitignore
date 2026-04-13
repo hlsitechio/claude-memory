@@ -1,0 +1,58 @@
+# Database files
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Vector database
+vector-db/
+chroma.sqlite3
+
+# JSONL conversation data (private)
+*.jsonl
+archive/
+
+# Images extracted from conversations
+images/
+
+# Logs
+*.log
+ingest.log
+embed-rebuild.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Lock files
+.ingest.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Credentials and secrets
+.credentials.json
+settings.json
+.env
+.env.*
+*.env
+
+# Agent memory data (private)
+agent-memory/
+*.mci
+
+# Exported sessions (private conversation data)
+export/

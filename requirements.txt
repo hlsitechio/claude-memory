@@ -1,0 +1,9 @@
+# Memory Engine — Python dependencies
+# Core (required)
+fastmcp>=0.1.0
+
+# Semantic search (optional — install for vector embeddings)
+chromadb>=0.4.0
+
+# Dev tools (optional)
+# pip install -r requirements.txt

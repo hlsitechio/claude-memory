@@ -1,0 +1,14 @@
+[Unit]
+Description=Memory Engine Auto-Ingest
+After=network.target
+
+[Service]
+Type=oneshot
+User=YOUR_USER
+ExecStart=/usr/bin/python3 /path/to/memory-engine/memory_engine/auto_ingest.py latest
+WorkingDirectory=/path/to/memory-engine/memory_engine
+Environment=HOME=/home/YOUR_USER
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target
