@@ -1,6 +1,10 @@
-# Memory Engine
+<p align="center">
+  <img src="web/public/banner.png" alt="Memory Engine" width="800" />
+</p>
 
-**Persistent brain database for Claude Code.** Indexes all conversation history into searchable SQLite + vector embeddings with a live web dashboard.
+<h1 align="center">Memory Engine</h1>
+
+<p align="center"><strong>Persistent brain database for Claude Code.</strong><br/>Indexes all conversation history into searchable SQLite + vector embeddings with a live web dashboard.</p>
 
 ## Features
 
