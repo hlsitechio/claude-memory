@@ -4,7 +4,7 @@
 
 <h1 align="center">Memory Engine</h1>
 
-<p align="center"><strong>Persistent brain database for Claude Code.</strong><br/>Indexes all conversation history into searchable SQLite + vector embeddings with a live web dashboard.</p>
+<p align="center"><strong>Persistent brain database for AI coding tools.</strong><br/>Indexes conversation history from Claude Code, Codex CLI, and Copilot CLI into searchable SQLite + vector embeddings with a live web dashboard.</p>
 
 ## Features
 
