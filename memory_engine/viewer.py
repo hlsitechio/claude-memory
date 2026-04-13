@@ -34,6 +34,47 @@ def escape(text):
     return html.escape(str(text)) if text else ""
 
 
+def render_observation(text):
+    """Render observation content with lightweight markdown formatting.
+    Handles: **bold**, `code`, file paths, URLs, bullet lists, —dashes."""
+    if not text:
+        return ""
+    text = html.escape(text)
+
+    # **bold** → <strong>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong style="color:var(--text1);">\1</strong>', text)
+
+    # `code` → <code> (inline)
+    text = re.sub(r'`([^`]+)`', r'<code style="background:var(--bg3); padding:1px 5px; border-radius:3px; font-size:12px; color:var(--accent);">\1</code>', text)
+
+    # File paths (G:/..., C:/..., /home/..., ./...) → styled
+    text = re.sub(
+        r'(?<!["\w])([A-Z]:[/\\][\w\-./\\]+|/(?:home|usr|etc|var|tmp|claude)[\w\-./]+|\./[\w\-./]+)',
+        r'<span style="color:#e879f9; font-family:monospace; font-size:12px;">\1</span>',
+        text
+    )
+
+    # URLs → clickable links
+    text = re.sub(
+        r'(https?://[^\s<>&]+)',
+        r'<a href="\1" target="_blank" style="color:var(--accent); word-break:break-all;">\1</a>',
+        text
+    )
+
+    # Bullet lines: - item or • item → styled list
+    text = re.sub(
+        r'^(\s*[-•]\s+)',
+        r'<span style="color:var(--accent); margin-right:4px;">•</span>',
+        text,
+        flags=re.MULTILINE
+    )
+
+    # — or -- at start of line → styled dash
+    text = re.sub(r'^(—|--)\s*', r'<span style="color:var(--muted);">—</span> ', text, flags=re.MULTILINE)
+
+    return text
+
+
 def render_content(text, max_len=1000):
     """Render entry content as formatted HTML. Handles tool calls, JSON results, and plain text."""
     import json as _json
@@ -2252,19 +2293,8 @@ async function quickAssign(sid) {{
             content_raw = obs["content"][:500]
             sid = (obs.get("session_id") or "?")[:8]
 
-            # Make URLs clickable for reference type
-            if obs["type"] == "reference":
-                lines = content_raw.split("\n")
-                url_line = lines[0] if lines else ""
-                ctx_line = escape(lines[1]) if len(lines) > 1 else ""
-                if url_line.startswith("http"):
-                    content_html = f'<a href="{escape(url_line)}" target="_blank" style="color:var(--accent); word-break:break-all;">{escape(url_line)}</a>'
-                    if ctx_line:
-                        content_html += f'<div style="color:var(--muted); font-size:12px; margin-top:2px;">{ctx_line}</div>'
-                else:
-                    content_html = f'<span>{escape(content_raw)}</span>'
-            else:
-                content_html = escape(content_raw)
+            # Render observation content with formatting
+            content_html = render_observation(content_raw)
 
             body += f'''<div class="entry" style="border-left:3px solid {color};">
                 <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
@@ -2274,7 +2304,7 @@ async function quickAssign(sid) {{
                     <a href="/session?id={obs.get("session_id", "")}" style="color:var(--muted); font-size:11px; margin-left:auto;">{sid}</a>
                 </div>
                 {conf_bar}
-                <div style="margin-top:8px; white-space:pre-wrap; font-size:13px;">{content_html}</div>
+                <div style="margin-top:8px; white-space:pre-wrap; font-size:13px; line-height:1.6;">{content_html}</div>
             </div>'''
 
         # Session Summaries section
