@@ -12,6 +12,7 @@ Observation Types:
   discovery   — Things found ("found", "discovered", "[!]")
   pattern     — Recurring patterns ("always", "pattern:", "whenever")
   change      — Modifications ("updated", "changed", "refactored")
+  reference   — URLs, repos, tools, packages, services mentioned (auto-bookmarked)
 
 Observation Concepts:
   how-it-works      — Explanations of mechanisms
@@ -98,6 +99,28 @@ OBSERVATION_PATTERNS = {
         "weight": 1.0,
         "min_length": 30,
     },
+    "reference": {
+        "patterns": [
+            # GitHub repos
+            r"https?://github\.com/[\w\-]+/[\w\-\.]+",
+            # npm packages
+            r"https?://(?:www\.)?npmjs\.com/package/[\w\-@/]+",
+            # PyPI packages
+            r"https?://pypi\.org/project/[\w\-]+",
+            # Documentation sites
+            r"https?://docs\.[\w\-]+\.(?:com|io|dev|org)/[\w\-/]*",
+            # General meaningful URLs (not localhost, not tool results)
+            r"https?://(?!127\.|localhost|0\.0\.0\.0)[\w\-]+\.(?:com|io|dev|org|net|co|app|ai|cloud|sh)/[\w\-\./?&#=%]+",
+            # Package references: npm install / pip install
+            r"(?:npm install|pip install|cargo add|brew install|apt install|go get)\s+[\w\-@/]+",
+            # Docker images
+            r"(?:docker (?:pull|run)|ghcr\.io|docker\.io)/[\w\-/:.]+",
+            # MCP server references
+            r"(?:mcp server|mcp tool|mcpServers)[:\s]+[\w\-]+",
+        ],
+        "weight": 1.5,
+        "min_length": 15,
+    },
 }
 
 CONCEPT_PATTERNS = {
@@ -153,15 +176,15 @@ class ObservationExtractor:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 entry_id INTEGER NOT NULL,
                 session_id TEXT,
-                type TEXT NOT NULL,         -- decision/bugfix/feature/discovery/pattern/change
-                concept TEXT,               -- how-it-works/why-it-exists/etc
-                content TEXT NOT NULL,       -- The observation text (extracted snippet)
+                type TEXT NOT NULL,         -- decision/bugfix/feature/discovery/pattern/change/reference
+                concept TEXT,               -- how-it-works/why-it-exists/github-repo/npm-package/etc
+                content TEXT NOT NULL,       -- The observation text (extracted snippet or URL)
                 context TEXT,               -- Surrounding conversation context
                 confidence REAL DEFAULT 0,  -- Pattern match confidence (0-1)
                 tags TEXT,                  -- Comma-separated tags
                 created_at TEXT DEFAULT (datetime('now')),
                 FOREIGN KEY (entry_id) REFERENCES entries(id),
-                UNIQUE(entry_id, type)      -- One observation per type per entry
+                UNIQUE(entry_id, type, content)  -- One observation per type+content per entry
             );
 
             CREATE TABLE IF NOT EXISTS session_summaries (
@@ -187,7 +210,64 @@ class ObservationExtractor:
         """)
         self.conn.commit()
 
+        # Migration: widen UNIQUE constraint to (entry_id, type, content) for multi-ref per entry
+        try:
+            # Check if old constraint exists by trying an insert that would fail under old schema
+            # If observations table has old UNIQUE(entry_id, type), recreate it
+            info = self.conn.execute("SELECT sql FROM sqlite_master WHERE name='observations'").fetchone()
+            if info and "UNIQUE(entry_id, type)" in (info["sql"] or "") and "UNIQUE(entry_id, type, content)" not in (info["sql"] or ""):
+                self.conn.executescript("""
+                    ALTER TABLE observations RENAME TO observations_old;
+                    CREATE TABLE observations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        entry_id INTEGER NOT NULL,
+                        session_id TEXT,
+                        type TEXT NOT NULL,
+                        concept TEXT,
+                        content TEXT NOT NULL,
+                        context TEXT,
+                        confidence REAL DEFAULT 0,
+                        tags TEXT,
+                        created_at TEXT DEFAULT (datetime('now')),
+                        FOREIGN KEY (entry_id) REFERENCES entries(id),
+                        UNIQUE(entry_id, type, content)
+                    );
+                    INSERT OR IGNORE INTO observations SELECT * FROM observations_old;
+                    DROP TABLE observations_old;
+                    CREATE INDEX IF NOT EXISTS idx_obs_session ON observations(session_id);
+                    CREATE INDEX IF NOT EXISTS idx_obs_type ON observations(type);
+                    CREATE INDEX IF NOT EXISTS idx_obs_concept ON observations(concept);
+                    CREATE INDEX IF NOT EXISTS idx_obs_confidence ON observations(confidence);
+                """)
+                self.conn.commit()
+        except Exception:
+            pass  # Table is new or already migrated
+
     # ── Observation Extraction ──────────────────────────────────────────
+
+    # URLs to ignore (noise from tool results, internal, or boilerplate)
+    _IGNORE_URL_PATTERNS = [
+        r"registry\.npmjs\.org",
+        r"objects\.githubusercontent\.com",
+        r"avatars\.githubusercontent\.com",
+        r"camo\.githubusercontent\.com",
+        r"fonts\.googleapis\.com",
+        r"cdn\.jsdelivr\.net",
+        r"unpkg\.com",
+        r"localhost",
+        r"127\.0\.0\.",
+        r"0\.0\.0\.0",
+        r"schemas?\.org",
+        r"w3\.org",
+        r"json-schema\.org",
+        r"opencollective\.com",
+        r"buymeacoffee",
+        r"shields\.io",
+        r"badge",
+        r"api\.github\.com/repos/.*/tarball",  # tarball download URLs
+        r"^https?://url$",  # placeholder "https://url"
+        r"^https?://[\w\-]+\.[\w]+/?$",  # bare domains with no path
+    ]
 
     def extract_from_entry(self, entry_id, content, role, session_id=None):
         """Extract observations from a single entry using pattern matching.
@@ -204,6 +284,12 @@ class ObservationExtractor:
 
         for obs_type, config in OBSERVATION_PATTERNS.items():
             if len(content) < config["min_length"]:
+                continue
+
+            # Use dedicated reference extractor for reference type
+            if obs_type == "reference":
+                refs = self._extract_references(content, entry_id, session_id)
+                observations.extend(refs)
                 continue
 
             total_score = 0
@@ -237,6 +323,102 @@ class ObservationExtractor:
                     })
 
         return observations
+
+    def _extract_references(self, content, entry_id, session_id):
+        """Extract URLs, repos, packages, and tools as structured reference observations."""
+        refs = []
+        seen_urls = set()
+
+        # ── Extract URLs ──
+        url_pattern = r'https?://[^\s<>")\]\},\'`]+[^\s<>")\]\},\'`.\)]'
+        urls = re.findall(url_pattern, content)
+
+        for url in urls:
+            # Clean trailing punctuation
+            url = url.rstrip(".,;:!?)'\"")
+
+            # Skip noise URLs
+            if any(re.search(p, url, re.IGNORECASE) for p in self._IGNORE_URL_PATTERNS):
+                continue
+
+            # Deduplicate within this entry
+            url_key = url.lower().rstrip("/")
+            if url_key in seen_urls:
+                continue
+            seen_urls.add(url_key)
+
+            # Classify the URL
+            concept = self._classify_url(url)
+
+            # Get surrounding context (the line containing the URL)
+            ctx = self._get_url_context(content, url)
+
+            # Higher confidence for GitHub repos, docs, and known package registries
+            confidence = 0.6
+            if "github.com" in url and url.count("/") >= 4:
+                confidence = 0.9  # GitHub repo
+            elif any(d in url for d in ["docs.", "documentation", "npmjs.com/package", "pypi.org/project"]):
+                confidence = 0.85
+            elif url.count("/") <= 3:
+                confidence = 0.4  # Root domain, less specific
+
+            refs.append({
+                "entry_id": entry_id,
+                "session_id": session_id,
+                "type": "reference",
+                "concept": concept,
+                "content": f"{url}\n{ctx}" if ctx else url,
+                "confidence": round(confidence, 3),
+            })
+
+        # ── Extract package install commands ──
+        pkg_pattern = r'(?:npm install|pip install|cargo add|brew install|go get)\s+([\w\-@/.]+)'
+        for match in re.finditer(pkg_pattern, content, re.IGNORECASE):
+            pkg = match.group(1).strip()
+            if len(pkg) > 2:
+                refs.append({
+                    "entry_id": entry_id,
+                    "session_id": session_id,
+                    "type": "reference",
+                    "concept": "package",
+                    "content": f"{match.group(0).strip()}\n{self._get_url_context(content, match.group(0))}",
+                    "confidence": 0.8,
+                })
+
+        return refs
+
+    def _classify_url(self, url):
+        """Classify a URL into a reference concept."""
+        url_lower = url.lower()
+        if "github.com" in url_lower:
+            return "github-repo"
+        elif "npmjs.com" in url_lower:
+            return "npm-package"
+        elif "pypi.org" in url_lower:
+            return "pypi-package"
+        elif "docs." in url_lower or "documentation" in url_lower:
+            return "documentation"
+        elif any(d in url_lower for d in ["hub.docker.com", "ghcr.io", "docker.io"]):
+            return "docker-image"
+        elif any(d in url_lower for d in [".dev", "developer.", "api."]):
+            return "api-or-tool"
+        else:
+            return "web-resource"
+
+    def _get_url_context(self, content, target, max_ctx=150):
+        """Get the line of text surrounding a URL or match for context."""
+        pos = content.find(target)
+        if pos == -1:
+            return ""
+        # Find the line containing this URL
+        line_start = content.rfind("\n", 0, pos)
+        line_start = line_start + 1 if line_start >= 0 else 0
+        line_end = content.find("\n", pos)
+        line_end = line_end if line_end >= 0 else len(content)
+        line = content[line_start:line_end].strip()
+        # Remove the URL itself from context to avoid duplication
+        ctx = line.replace(target, "").strip(" -—:·|,")
+        return ctx[:max_ctx] if ctx and len(ctx) > 5 else ""
 
     def _detect_concept(self, content_lower):
         """Detect the observation concept from content."""

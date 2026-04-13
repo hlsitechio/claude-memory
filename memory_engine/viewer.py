@@ -1990,6 +1990,7 @@ async function quickAssign(sid) {{
         type_colors = {
             "bugfix": "var(--red)", "discovery": "var(--green)", "change": "var(--blue)",
             "pattern": "var(--purple)", "decision": "var(--yellow)", "feature": "var(--accent)",
+            "reference": "#e879f9",
         }
 
         body = f'<div style="margin-bottom:12px; color:var(--muted);">{len(observations)} observations in this project</div>'
@@ -2215,6 +2216,7 @@ async function quickAssign(sid) {{
         type_colors = {
             "bugfix": "var(--red)", "discovery": "var(--green)", "change": "var(--blue)",
             "pattern": "var(--purple)", "decision": "var(--yellow)", "feature": "var(--accent)",
+            "reference": "#e879f9",
         }
         for t, c in stats.get("by_type", {}).items():
             color = type_colors.get(t, "var(--text)")
@@ -2247,8 +2249,22 @@ async function quickAssign(sid) {{
             concept_badge = f'<span style="background:var(--bg2); padding:2px 8px; border-radius:10px; font-size:11px; color:var(--muted);">{obs["concept"]}</span>' if obs.get("concept") else ""
             conf_pct = int(obs["confidence"] * 100)
             conf_bar = f'<div style="width:{conf_pct}px; height:3px; background:{color}; border-radius:2px; margin-top:4px;"></div>'
-            content_text = escape(obs["content"][:500])
+            content_raw = obs["content"][:500]
             sid = (obs.get("session_id") or "?")[:8]
+
+            # Make URLs clickable for reference type
+            if obs["type"] == "reference":
+                lines = content_raw.split("\n")
+                url_line = lines[0] if lines else ""
+                ctx_line = escape(lines[1]) if len(lines) > 1 else ""
+                if url_line.startswith("http"):
+                    content_html = f'<a href="{escape(url_line)}" target="_blank" style="color:var(--accent); word-break:break-all;">{escape(url_line)}</a>'
+                    if ctx_line:
+                        content_html += f'<div style="color:var(--muted); font-size:12px; margin-top:2px;">{ctx_line}</div>'
+                else:
+                    content_html = f'<span>{escape(content_raw)}</span>'
+            else:
+                content_html = escape(content_raw)
 
             body += f'''<div class="entry" style="border-left:3px solid {color};">
                 <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
@@ -2258,7 +2274,7 @@ async function quickAssign(sid) {{
                     <a href="/session?id={obs.get("session_id", "")}" style="color:var(--muted); font-size:11px; margin-left:auto;">{sid}</a>
                 </div>
                 {conf_bar}
-                <div style="margin-top:8px; white-space:pre-wrap; font-size:13px;">{content_text}</div>
+                <div style="margin-top:8px; white-space:pre-wrap; font-size:13px;">{content_html}</div>
             </div>'''
 
         # Session Summaries section
